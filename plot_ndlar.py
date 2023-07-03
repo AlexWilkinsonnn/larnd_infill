@@ -1,12 +1,12 @@
-import argparse, os
+import argparse
 
-import sparse, h5py
-import numpy as np
-from matplotlib import pyplot as plt
+import h5py
 
 from larpixsoft.detector import set_detector_properties
 from larpixsoft.geometry import get_geom_map
 from larpixsoft.funcs import get_events_no_cuts
+
+from aux import plot_ndlar
 
 # DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
 # PIXEL_LAYOUT=(
@@ -27,23 +27,26 @@ def main(args):
 
     f = h5py.File(args.input_file, "r")
 
-    packets = get_events_no_cuts(
-        f['packets'], f['mc_packets_assn'], f['tracks'], geometry, detector, no_tracks=True
-    )
-
-    # voxel number will be for x:
-    # pixel column number + num previous drift modules * (num pixel columns per drift module * num pixel columns per drift module side gap)
-    # voxel number will be for y:
-    # pixel row number
-    # voxel number will be for z:
-    # tick number + num previous drift modules * (num ticks per drift module * num ticks per anode gap)
+    if args.tracks:
+        packets, tracks = get_events_no_cuts(
+            f['packets'], f['mc_packets_assn'], f['tracks'], geometry, detector
+        )
+        for event_packets, event_tracks in zip(packets, tracks):
+            plot_ndlar(event_packets, detector, tracks=event_tracks)
+    else:
+        packets = get_events_no_cuts(
+            f['packets'], f['mc_packets_assn'], f['tracks'], geometry, detector, no_tracks=True
+        )
+        for event_packets in packets:
+            plot_ndlar(event_packets, detector)
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("input_file")
-    parser.add_argument("output_dir")
+
+    parser.add_argument("--tracks", action="store_true")
 
     args = parser.parse_args()
 
