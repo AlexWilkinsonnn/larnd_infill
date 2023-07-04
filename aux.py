@@ -21,7 +21,7 @@ def plot_ndlar(packets, detector, tracks=None):
         x = x * xy_size + p.x + p.anode.tpc_x
         y = y * xy_size + p.y + p.anode.tpc_y
         z = z * z_size + p.z_global()
-        ax.plot_surface(x, y, z, color=m_adc.to_rgba(p.ADC))
+        ax.plot_surface(x, z, y, color=m_adc.to_rgba(p.ADC))
 
     if tracks is not None:
         for t in tracks:
@@ -149,22 +149,29 @@ def plot_ndlar_voxels(
             pix_cols_per_anode * (i + 1), pix_cols_per_anode * (i + 1) + pix_cols_per_gap
         ]:
             x = coord_x * xy_size
-            ax.plot((x, x), (0, 0), (0, y_max), color="black")
-            ax.plot((x, x), (0, z_max), (y_max, y_max), color="black")
-            ax.plot((x, x), (z_max, z_max), (y_max, 0), color="black")
-            ax.plot((x, x), (z_max, 0), (0, 0), color="black")
+            ax.plot((x, x), (0, 0), (0, y_max), color="black", lw=0.5)
+            ax.plot((x, x), (0, z_max), (y_max, y_max), color="black", lw=0.5)
+            ax.plot((x, x), (z_max, z_max), (y_max, 0), color="black", lw=0.5)
+            ax.plot((x, x), (z_max, 0), (0, 0), color="black", lw=0.5)
 
     for i in range(6):
         for coord_z in [ticks_per_module * (i + 1), ticks_per_module * (i + 1) + ticks_per_gap]:
             z = coord_z * z_size
-            ax.plot((0, 0), (z, z), (0, y_max), color="black")
-            ax.plot((0, x_max), (z, z), (y_max, y_max),color="black")
-            ax.plot((x_max, x_max), (z, z), (y_max, 0), color="black")
-            ax.plot((x_max, 0), (z, z),(0, 0),  color="black")
+            ax.plot((0, 0), (z, z), (0, y_max), color="black", lw=0.5)
+            ax.plot((0, x_max), (z, z), (y_max, y_max),color="black", lw=0.5)
+            ax.plot((x_max, x_max), (z, z), (y_max, 0), color="black", lw=0.5)
+            ax.plot((x_max, 0), (z, z),(0, 0),  color="black", lw=0.5)
 
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    ax.set_zlabel("z")
+    ax.set_xlim(0, detector.tpc_borders[-1][0][1] - detector.tpc_borders[0][0][0])
+    ax.set_ylim(0, detector.tpc_borders[-1][2][0] - detector.tpc_borders[0][2][0])
+    ax.set_zlim(0, detector.tpc_borders[-1][1][1] - detector.tpc_borders[0][1][0])
+    ax.set_box_aspect((4,8,4))
+    ax.grid(False)
+    ax.xaxis.set_major_locator(plt.MaxNLocator(5))
+    ax.yaxis.set_major_locator(plt.MaxNLocator(5))
+    ax.w_xaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
+    ax.w_yaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
+    ax.w_zaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
 
     plt.show()
 

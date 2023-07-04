@@ -2,7 +2,6 @@ import argparse, os, math
 
 import sparse, h5py
 import numpy as np
-from matplotlib import pyplot as plt
 
 from larpixsoft.detector import set_detector_properties
 from larpixsoft.geometry import get_geom_map
@@ -24,6 +23,7 @@ PIXEL_LAYOUT=(
 PIXEL_COL_OFFSET = 128
 PIXEL_COLS_PER_ANODE = 256
 PIXEL_COLS_PER_GAP = 11 # 4.14 / 0.38
+PIXEL_ROWS_PER_ANODE = 800
 PIXEL_ROW_OFFSET = 405
 TICK_OFFSET = 0
 TICKS_PER_MODULE = 6116
@@ -61,7 +61,7 @@ def main(args):
     tpc_offsets_x = sorted(list(set(offsets[0] for offsets in detector.tpc_offsets )))
     tpc_offsets_z = sorted(list(set(offsets[2] for offsets in detector.tpc_offsets )))
 
-    for event_packets in packets:
+    for i_ev, event_packets in enumerate(packets):
         coords = [[], [], []]
         adcs = []
         num_before_trigger, num_zero_adc, num_high_z = 0, 0, 0
@@ -92,18 +92,40 @@ def main(args):
             voxel_y += PIXEL_ROW_OFFSET
             coords[1].append(voxel_y)
 
-            voxel_z = math.floor(p.z() / (detector.time_sampling * detector.vdrift))
+            if p.io_group in [1, 2]:
+                voxel_z = math.floor(p.z() / (detector.time_sampling * detector.vdrift))
+            else:
+                voxel_z = math.floor((100.8 - p.z()) / (detector.time_sampling * detector.vdrift))
             voxel_z += TICK_OFFSET
             voxel_z += tpc_offsets_z.index(p.anode.tpc_z) * (TICKS_PER_MODULE + TICKS_PER_GAP)
             coords[2].append(voxel_z)
 
             adcs.append(p.ADC)
 
-        plot_ndlar_voxels(
-            coords, adcs, detector,
-            pix_cols_per_anode=PIXEL_COLS_PER_ANODE, pix_cols_per_gap=PIXEL_COLS_PER_GAP,
-            pix_rows_per_anode=800,
-            ticks_per_module=TICKS_PER_MODULE, ticks_per_gap=TICKS_PER_GAP
+        if args.plot_only:
+            plot_ndlar_voxels(
+                coords, adcs, detector,
+                pix_cols_per_anode=PIXEL_COLS_PER_ANODE, pix_cols_per_gap=PIXEL_COLS_PER_GAP,
+                pix_rows_per_anode=PIXEL_COLS_PER_ANODE,
+                ticks_per_module=TICKS_PER_MODULE, ticks_per_gap=TICKS_PER_GAP
+            )
+            continue
+
+        s_voxelised = sparse.COO(
+            coords, adcs,
+            shape=(
+                (5 * PIXEL_COLS_PER_ANODE + 4 * PIXEL_COLS_PER_GAP),
+                PIXEL_ROWS_PER_ANODE,
+                (7 * TICKS_PER_MODULE + 6 * TICKS_PER_GAP)
+            )
+        )
+
+        sparse.save_npz(
+            os.path.join(
+                args.output_dir,
+                os.path.basename(args.input_file).split(".h5")[0] + "_ev{}.npz".format(i_ev)
+            ),
+            s_voxelised
         )
 
 
@@ -112,6 +134,8 @@ def parse_arguments():
 
     parser.add_argument("input_file")
     parser.add_argument("output_dir")
+
+    parser.add_argument("--plot_only", action="store_true")
 
     args = parser.parse_args()
 
