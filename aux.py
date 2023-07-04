@@ -15,6 +15,8 @@ def plot_ndlar(packets, detector, tracks=None):
     ax = fig.add_subplot(projection="3d")
 
     for p in packets:
+        # if p.z() > 50.4:
+        #     continue
         x, y, z = get_cube()
         x = x * xy_size + p.x + p.anode.tpc_x
         y = y * xy_size + p.y + p.anode.tpc_y
@@ -110,4 +112,59 @@ def get_cube():
     z = np.cos(Theta) / np.sqrt(2)
 
     return x,y,z
+
+
+def plot_ndlar_voxels(
+    coords, adcs, detector,
+    pix_cols_per_anode=256, pix_cols_per_gap=11,
+    pix_rows_per_anode=800,
+    ticks_per_module=6116, ticks_per_gap=79
+):
+    """
+    Plot ND-LAr from data that has been voxelised
+    (array is too large to use Axes3D.voxels so drawing surfaces)
+    """
+    xy_size = detector.pixel_pitch
+    z_size = detector.time_sampling * detector.vdrift
+
+    norm_adc = matplotlib.colors.Normalize(vmin=0, vmax=300)
+    m_adc = matplotlib.cm.ScalarMappable(norm=norm_adc, cmap=matplotlib.cm.jet)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(projection="3d")
+
+    for coord_x, coord_y, coord_z, adc in zip(*coords, adcs):
+        x, y, z = get_cube()
+        x = x * xy_size + (coord_x * xy_size)
+        y = y * xy_size + (coord_y * xy_size)
+        z = z * z_size + (coord_z * z_size)
+
+        ax.plot_surface(x, z, y, color=m_adc.to_rgba(adc))
+
+    x_max = (pix_cols_per_anode * 5 + (pix_cols_per_gap * 4)) * xy_size
+    y_max = pix_rows_per_anode * xy_size
+    z_max = (ticks_per_module * 7 + (ticks_per_gap * 6)) * z_size
+    for i in range(4):
+        for coord_x in [
+            pix_cols_per_anode * (i + 1), pix_cols_per_anode * (i + 1) + pix_cols_per_gap
+        ]:
+            x = coord_x * xy_size
+            ax.plot((x, x), (0, 0), (0, y_max), color="black")
+            ax.plot((x, x), (0, z_max), (y_max, y_max), color="black")
+            ax.plot((x, x), (z_max, z_max), (y_max, 0), color="black")
+            ax.plot((x, x), (z_max, 0), (0, 0), color="black")
+
+    for i in range(6):
+        for coord_z in [ticks_per_module * (i + 1), ticks_per_module * (i + 1) + ticks_per_gap]:
+            z = coord_z * z_size
+            ax.plot((0, 0), (z, z), (0, y_max), color="black")
+            ax.plot((0, x_max), (z, z), (y_max, y_max),color="black")
+            ax.plot((x_max, x_max), (z, z), (y_max, 0), color="black")
+            ax.plot((x_max, 0), (z, z),(0, 0),  color="black")
+
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_zlabel("z")
+
+    plt.show()
 
