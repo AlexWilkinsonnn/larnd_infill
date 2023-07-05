@@ -118,7 +118,7 @@ def plot_ndlar_voxels(
     coords, adcs, detector,
     pix_cols_per_anode=256, pix_cols_per_gap=11,
     pix_rows_per_anode=800,
-    ticks_per_module=6116, ticks_per_gap=79
+    ticks_per_module=6117, ticks_per_gap=79
 ):
     """
     Plot ND-LAr from data that has been voxelised

@@ -9,24 +9,24 @@ from larpixsoft.funcs import get_events_no_cuts
 
 from aux import plot_ndlar_voxels
 
-# DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
-# PIXEL_LAYOUT=(
-#     "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
-# )
-DET_PROPS=(
-    "/home/alex/Documents/extrapolation/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
-)
+DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
 PIXEL_LAYOUT=(
-    "/home/alex/Documents/extrapolation/larnd-sim/larndsim/pixel_layouts/"
-    "multi_tile_layout-3.0.40.yaml"
+    "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
 )
+# DET_PROPS=(
+#     "/home/alex/Documents/extrapolation/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
+# )
+# PIXEL_LAYOUT=(
+#     "/home/alex/Documents/extrapolation/larnd-sim/larndsim/pixel_layouts/"
+#     "multi_tile_layout-3.0.40.yaml"
+# )
 PIXEL_COL_OFFSET = 128
 PIXEL_COLS_PER_ANODE = 256
 PIXEL_COLS_PER_GAP = 11 # 4.14 / 0.38
 PIXEL_ROWS_PER_ANODE = 800
 PIXEL_ROW_OFFSET = 405
 TICK_OFFSET = 0
-TICKS_PER_MODULE = 6116
+TICKS_PER_MODULE = 6117
 TICKS_PER_GAP = 79 # 1.3cm / (0.1us * 0.1648cm/us)
 
 
@@ -65,6 +65,7 @@ def main(args):
         coords = [[], [], []]
         adcs = []
         num_before_trigger, num_zero_adc, num_high_z = 0, 0, 0
+        voxel_zs = []
         for p in event_packets:
             # Very rarely some packets are one tick before the trigger packet,
             # not sure what causes this
@@ -96,6 +97,7 @@ def main(args):
                 voxel_z = math.floor(p.z() / (detector.time_sampling * detector.vdrift))
             else:
                 voxel_z = math.floor((100.8 - p.z()) / (detector.time_sampling * detector.vdrift))
+            voxel_zs.append(voxel_z)
             voxel_z += TICK_OFFSET
             voxel_z += tpc_offsets_z.index(p.anode.tpc_z) * (TICKS_PER_MODULE + TICKS_PER_GAP)
             coords[2].append(voxel_z)
