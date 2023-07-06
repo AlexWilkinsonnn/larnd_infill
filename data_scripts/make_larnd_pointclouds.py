@@ -1,7 +1,6 @@
 import argparse, os, math
 
 import sparse, h5py
-import numpy as np
 
 from larpixsoft.detector import set_detector_properties
 from larpixsoft.geometry import get_geom_map
@@ -9,17 +8,17 @@ from larpixsoft.funcs import get_events_no_cuts
 
 from aux import plot_ndlar_voxels
 
-DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
-PIXEL_LAYOUT=(
-    "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
-)
-# DET_PROPS=(
-#     "/home/alex/Documents/extrapolation/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
-# )
+# DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
 # PIXEL_LAYOUT=(
-#     "/home/alex/Documents/extrapolation/larnd-sim/larndsim/pixel_layouts/"
-#     "multi_tile_layout-3.0.40.yaml"
+#     "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
 # )
+DET_PROPS=(
+    "/home/alex/Documents/extrapolation/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
+)
+PIXEL_LAYOUT=(
+    "/home/alex/Documents/extrapolation/larnd-sim/larndsim/pixel_layouts/"
+    "multi_tile_layout-3.0.40.yaml"
+)
 PIXEL_COL_OFFSET = 128
 PIXEL_COLS_PER_ANODE = 256
 PIXEL_COLS_PER_GAP = 11 # 4.14 / 0.38

@@ -1,4 +1,5 @@
 import os
+from collections import defaultdict
 
 import numpy as np
 import sparse
@@ -28,7 +29,7 @@ class LarndDataset(torch.utils.data.Dataset):
         assert(x_gap_size + x_gap_padding < x_gap_spacing)
         assert(z_gap_size + z_gap_padding < z_gap_spacing)
 
-        self.x_true_gaps = x_true_gaps
+        self.x_true_gaps = x_true_gaps # array of x gap start and end voxels
         self.x_gap_spacing = x_gap_spacing
         self.x_gap_size = x_gap_size
         self.x_gap_padding = x_gap_padding
@@ -43,6 +44,46 @@ class LarndDataset(torch.utils.data.Dataset):
 
         adc_coords = event.coords
         adcs = event.data
+
+        x_gaps = (
+            self.x_true_gaps +
+            (
+                np.random.choice([1, -1]) *
+                np.random.randint(
+                    self.x_gap_padding + self.x_gap_size,
+                    self.x_gap_spacing - self.x_gap_padding - self.x_gap_size
+                )
+            )
+        )
+        z_gaps = (
+            self.z_true_gaps +
+            (
+                np.random.choice([1, -1]) *
+                np.random.randint(
+                    self.z_gap_padding + self.z_gap_size,
+                    self.z_gap_spacing - self.z_gap_padding - self.z_gap_size
+                )
+            )
+        )
+
+        infill_coords = set()
+        x_coords_near_gap = defaultdict()
+        z_coords_near_gap = defaultdict()
+        for coord_x, coord_y, coord_z, adc in zip(*adc_coords, adcs):
+            if any(0 < x_gap_start - coord_x <= self.x_gap_size for x_gap_start in x_gaps[::2]):
+                x_coords_near_gap[coord_x] = (coord_x, coord_y, coord_z, adc)
+            elif any(0 < coord_x - x_gap_end <= self.x_gap_size for x_gap_end in x_gaps[1::2]):
+                x_coords_near_gap[coord_x] = (coord_x, coord_y, coord_z, adc)
+            if any(0 < z_gap_start - coord_z <= self.z_gap_size for z_gap_start in z_gaps[::2]):
+                z_coords_near_gap[coord_z] = (coord_z, coord_y, coord_z, adc)
+            elif any(0 < coord_z - z_gap_end <= self.z_gap_size for z_gap_end in z_gaps[1::2]):
+                z_coords_near_gap[coord_z] = (coord_z, coord_y, coord_z, adc)
+
+        print(x_gaps)
+        print(z_gaps)
+        print(x_coords_near_gap)
+        print(z_coords_near_gap)
+        return
 
         # Don't apply infill mask where there are no tracks
         xs, ys, zs = [], [], []
@@ -131,19 +172,28 @@ class LarndDataset(torch.utils.data.Dataset):
 
 # Testing
 if __name__ == "__main__":
-    path = "/share/lustre/awilkins/larnd_infill_data/all/"
+    # path = "/share/lustre/awilkins/larnd_infill_data/all/"
+    path = "/home/alex/Documents/extrapolation/larnd_infill_test_data"
     PIXEL_COLS_PER_ANODE = 256
     PIXEL_COLS_PER_GAP = 11 # 4.14 / 0.38
     TICKS_PER_MODULE = 6117
     TICKS_PER_GAP = 79 # 1.3cm / (0.1us * 0.1648cm/us)
-    x_gaps = np.zeros(PIXEL_COLS_PER_ANODE * 5 + PIXEL_COLS_PER_GAP * 4)
-    x_gap_starts = [ (i + 1) * PIXEL_COLS_PER_ANODE + i * PIXEL_COLS_PER_GAP for i in range(5) ]
-    for start in x_gap_starts:
-        x_gaps[start:start+PIXEL_COLS_PER_GAP] = 1
-    z_gaps = np.zeros(TICKS_PER_MODULE * 7 + TICKS_PER_GAP * 6)
-    z_gap_starts = [ (i + 1) * TICKS_PER_MODULE + i * TICKS_PER_GAP for i in range(7) ]
-    for start in z_gap_starts:
-        z_gaps[start:start+TICKS_PER_GAP] = 1
+    # x_gaps = np.zeros(PIXEL_COLS_PER_ANODE * 5 + PIXEL_COLS_PER_GAP * 4)
+    # x_gap_starts = [ (i + 1) * PIXEL_COLS_PER_ANODE + i * PIXEL_COLS_PER_GAP for i in range(5) ]
+    # for start in x_gap_starts:
+    #     x_gaps[start:start+PIXEL_COLS_PER_GAP] = 1
+    # z_gaps = np.zeros(TICKS_PER_MODULE * 7 + TICKS_PER_GAP * 6)
+    # z_gap_starts = [ (i + 1) * TICKS_PER_MODULE + i * TICKS_PER_GAP for i in range(7) ]
+    # for start in z_gap_starts:
+    #     z_gaps[start:start+TICKS_PER_GAP] = 1
+    x_gaps = []
+    for i in range(5):
+        x_gaps.append(PIXEL_COLS_PER_ANODE * (i + 1))
+        x_gaps.append(PIXEL_COLS_PER_ANODE * (i + 1) + PIXEL_COLS_PER_GAP - 1)
+    z_gaps = []
+    for i in range(5):
+        z_gaps.append(PIXEL_COLS_PER_ANODE * (i + 1))
+        z_gaps.append(PIXEL_COLS_PER_ANODE * (i + 1) + PIXEL_COLS_PER_GAP - 1)
     dataset = LarndDataset(
         path,
         x_gaps, PIXEL_COLS_PER_ANODE, PIXEL_COLS_PER_GAP, PIXEL_COLS_PER_GAP,

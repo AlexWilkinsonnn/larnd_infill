@@ -3,7 +3,7 @@ import matplotlib; from matplotlib import pyplot as plt
 import mpl_toolkits.mplot3d.art3d as art3d
 
 
-def plot_ndlar(packets, detector, tracks=None):
+def plot_ndlar(packets, detector, tracks=None, structures=True):
     """Plots ND-LAr with packets from a single event and optionally tracks"""
     xy_size = detector.pixel_pitch
     z_size = detector.time_sampling * detector.vdrift
@@ -31,62 +31,63 @@ def plot_ndlar(packets, detector, tracks=None):
             )
 
     # Magic code to draw ND-LAr modules taken from larnd-sim example
-    for i in range(0, 70, 2):
-        anode1 = plt.Rectangle(
-            (detector.tpc_borders[i][0][0], detector.tpc_borders[i][1][0]),
-            detector.tpc_borders[i][0][1] - detector.tpc_borders[i][0][0],
-            detector.tpc_borders[i][1][1] - detector.tpc_borders[i][1][0],
-            linewidth=1, fc='none', edgecolor='gray'
-        )
-        ax.add_patch(anode1)
-        art3d.pathpatch_2d_to_3d(anode1, z=detector.tpc_borders[0][2][0], zdir="y")
+    if structures:
+        for i in range(0, 70, 2):
+            anode1 = plt.Rectangle(
+                (detector.tpc_borders[i][0][0], detector.tpc_borders[i][1][0]),
+                detector.tpc_borders[i][0][1] - detector.tpc_borders[i][0][0],
+                detector.tpc_borders[i][1][1] - detector.tpc_borders[i][1][0],
+                linewidth=1, fc='none', edgecolor='gray'
+            )
+            ax.add_patch(anode1)
+            art3d.pathpatch_2d_to_3d(anode1, z=detector.tpc_borders[0][2][0], zdir="y")
 
-        anode2 = plt.Rectangle(
-            (detector.tpc_borders[i][0][0], detector.tpc_borders[i][1][0]),
-            detector.tpc_borders[i][0][1] - detector.tpc_borders[i][0][0],
-            detector.tpc_borders[i][1][1] - detector.tpc_borders[i][1][0],
-            linewidth=1, fc='none', edgecolor='gray'
-        )
-        ax.add_patch(anode2)
-        art3d.pathpatch_2d_to_3d(anode2, z=detector.tpc_borders[i+1][2][0], zdir="y")
+            anode2 = plt.Rectangle(
+                (detector.tpc_borders[i][0][0], detector.tpc_borders[i][1][0]),
+                detector.tpc_borders[i][0][1] - detector.tpc_borders[i][0][0],
+                detector.tpc_borders[i][1][1] - detector.tpc_borders[i][1][0],
+                linewidth=1, fc='none', edgecolor='gray'
+            )
+            ax.add_patch(anode2)
+            art3d.pathpatch_2d_to_3d(anode2, z=detector.tpc_borders[i+1][2][0], zdir="y")
 
-        cathode = plt.Rectangle(
-            (detector.tpc_borders[i][0][0], detector.tpc_borders[i][1][0]),
-            detector.tpc_borders[i][0][1] - detector.tpc_borders[i][0][0],
-            detector.tpc_borders[i][1][1] - detector.tpc_borders[i][1][0],
-            linewidth=1, fc='gray', alpha=0.2, edgecolor='gray'
-        )
-        ax.add_patch(cathode)
-        z_cathode = (detector.tpc_borders[i][2][0]+detector.tpc_borders[i+1][2][0])/2
-        art3d.pathpatch_2d_to_3d(cathode, z=z_cathode, zdir="y")
+            cathode = plt.Rectangle(
+                (detector.tpc_borders[i][0][0], detector.tpc_borders[i][1][0]),
+                detector.tpc_borders[i][0][1] - detector.tpc_borders[i][0][0],
+                detector.tpc_borders[i][1][1] - detector.tpc_borders[i][1][0],
+                linewidth=1, fc='gray', alpha=0.2, edgecolor='gray'
+            )
+            ax.add_patch(cathode)
+            z_cathode = (detector.tpc_borders[i][2][0]+detector.tpc_borders[i+1][2][0])/2
+            art3d.pathpatch_2d_to_3d(cathode, z=z_cathode, zdir="y")
 
-        ax.plot(
-            (detector.tpc_borders[i][0][0], detector.tpc_borders[i][0][0]),
-            (detector.tpc_borders[i][2][0], detector.tpc_borders[i+1][2][0]),
-            (detector.tpc_borders[i][1][0], detector.tpc_borders[i][1][0]),
-            lw=1, color='gray'
-        )
+            ax.plot(
+                (detector.tpc_borders[i][0][0], detector.tpc_borders[i][0][0]),
+                (detector.tpc_borders[i][2][0], detector.tpc_borders[i+1][2][0]),
+                (detector.tpc_borders[i][1][0], detector.tpc_borders[i][1][0]),
+                lw=1, color='gray'
+            )
 
-        ax.plot(
-            (detector.tpc_borders[i][0][0], detector.tpc_borders[i][0][0]),
-            (detector.tpc_borders[i][2][0], detector.tpc_borders[i+1][2][0]),
-            (detector.tpc_borders[i][1][1], detector.tpc_borders[i][1][1]),
-            lw=1, color='gray'
-        )
+            ax.plot(
+                (detector.tpc_borders[i][0][0], detector.tpc_borders[i][0][0]),
+                (detector.tpc_borders[i][2][0], detector.tpc_borders[i+1][2][0]),
+                (detector.tpc_borders[i][1][1], detector.tpc_borders[i][1][1]),
+                lw=1, color='gray'
+            )
 
-        ax.plot(
-            (detector.tpc_borders[i][0][1], detector.tpc_borders[i][0][1]),
-            (detector.tpc_borders[i][2][0], detector.tpc_borders[i+1][2][0]),
-            (detector.tpc_borders[i][1][0], detector.tpc_borders[i][1][0]),
-            lw=1, color='gray'
-        )
+            ax.plot(
+                (detector.tpc_borders[i][0][1], detector.tpc_borders[i][0][1]),
+                (detector.tpc_borders[i][2][0], detector.tpc_borders[i+1][2][0]),
+                (detector.tpc_borders[i][1][0], detector.tpc_borders[i][1][0]),
+                lw=1, color='gray'
+            )
 
-        ax.plot(
-            (detector.tpc_borders[i][0][1], detector.tpc_borders[i][0][1]),
-            (detector.tpc_borders[i][2][0], detector.tpc_borders[i+1][2][0]),
-            (detector.tpc_borders[i][1][1], detector.tpc_borders[i][1][1]),
-            lw=1, color='gray'
-        )
+            ax.plot(
+                (detector.tpc_borders[i][0][1], detector.tpc_borders[i][0][1]),
+                (detector.tpc_borders[i][2][0], detector.tpc_borders[i+1][2][0]),
+                (detector.tpc_borders[i][1][1], detector.tpc_borders[i][1][1]),
+                lw=1, color='gray'
+            )
 
     ax.set_xlim(detector.tpc_borders[0][0][0],detector.tpc_borders[-1][0][1])
     ax.set_ylim(detector.tpc_borders[0][2][0],detector.tpc_borders[-1][2][0])
@@ -174,4 +175,31 @@ def plot_ndlar_voxels(
     ax.w_zaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
 
     plt.show()
+
+
+def reflect_over_gaps(
+    coords, adcs,
+    pix_cols_per_anode=256, pix_cols_per_gap=11,
+    pix_rows_per_anode=800,
+    ticks_per_module=6117, ticks_per_gap=79
+):
+    x_gap_edges_low = [ pix_cols_per_anode * (i + 1) + pix_cols_per_gap * i for i in range(5) ]
+    x_gap_edges_high = [
+        pix_cols_per_anode * (i + 1) + pix_cols_per_gap * (i + 1) for i in range(5)
+    ]
+    z_gap_edges_low = [ ticks_per_module * (i + 1) + ticks_per_gap * i for i in range(7) ]
+    z_gap_edges_high = [ ticks_per_module * (i + 1) + ticks_per_gap * (i + 1) for i in range(7) ]
+
+    print(x_gap_edges_low)
+    print(x_gap_edges_high)
+    print(z_gap_edges_low)
+    print(z_gap_edges_high)
+
+
+    # reflected_coords = []
+    # for coord_x, coord_y, coord_z, adc in zip(*coords, adcs):
+    #     if coor
+
+
+
 
