@@ -5,14 +5,14 @@ import numpy as np
 import sparse
 from tqdm import tqdm
 
-import torch
+# import torch
 
 from larpixsoft.detector import set_detector_properties
 
 from aux import plot_ndlar_voxels
 
 
-class LarndDataset(torch.utils.data.Dataset):
+class LarndDataset():
     """Dataset for reading sparse volexised larnd-sim data and preparing an infill mask"""
     def __init__(
         self, dataroot,
@@ -49,6 +49,8 @@ class LarndDataset(torch.utils.data.Dataset):
         adc_coords = event.coords
         adcs = event.data
 
+        np.random.seed(1)
+
         x_gaps = (
             self.x_true_gaps +
             (
@@ -75,18 +77,22 @@ class LarndDataset(torch.utils.data.Dataset):
         x_coords_near_gap = defaultdict(list)
         z_coords_near_gap = defaultdict(list)
         for coord_x, coord_y, coord_z, adc in zip(*adc_coords, adcs):
-            if any(0 < x_gap_start - coord_x <= self.x_gap_size for x_gap_start in x_gaps[::2]):
+            if any(
+                0 < x_gap_start - coord_x <= self.x_gap_size + 1 for x_gap_start in x_gaps[::2]
+            ):
                 x_coords_near_gap[coord_x].append((coord_x, coord_y, coord_z))
-            elif any(0 < coord_x - x_gap_end <= self.x_gap_size for x_gap_end in x_gaps[1::2]):
+            elif any(0 < coord_x - x_gap_end <= self.x_gap_size + 1 for x_gap_end in x_gaps[1::2]):
                 x_coords_near_gap[coord_x].append((coord_x, coord_y, coord_z))
-            if any(0 < z_gap_start - coord_z <= self.z_gap_size for z_gap_start in z_gaps[::2]):
+            if any(
+                0 < z_gap_start - coord_z <= self.z_gap_size + 1 for z_gap_start in z_gaps[::2]
+            ):
                 z_coords_near_gap[coord_z].append((coord_z, coord_y, coord_z))
-            elif any(0 < coord_z - z_gap_end <= self.z_gap_size for z_gap_end in z_gaps[1::2]):
+            elif any(0 < coord_z - z_gap_end <= self.z_gap_size + 1 for z_gap_end in z_gaps[1::2]):
                 z_coords_near_gap[coord_z].append((coord_z, coord_y, coord_z))
 
             if (
-                any(0 < coord_x - x_gap_start < self.x_gap_size for x_gap_start in x_gaps[::2]) or
-                any(0 < coord_z - z_gap_start < self.z_gap_size for z_gap_start in z_gaps[::2])
+                any(0 <= coord_x - x_gap_start < self.x_gap_size for x_gap_start in x_gaps[::2]) or
+                any(0 <= coord_z - z_gap_start < self.z_gap_size for z_gap_start in z_gaps[::2])
             ):
                 continue
 
@@ -95,52 +101,170 @@ class LarndDataset(torch.utils.data.Dataset):
             masked_adc_coords[2].append(coord_z)
             masked_adcs.append(adc)
 
-        for x_gap_start in x_gaps[::2]:
-            last_col = x_gap_start - 1
-            if last_col not in x_coords_near_gap:
-                continue
-            for coord in x_coords_near_gap[last_col]:
-                reflect_y, reflect_z = coord[1], coord[2]
-                for col in range(x_gap_start - self.x_gap_size, x_gap_start):
-                    if col not in x_coords_near_gap:
-                        continue
-                    for coord in x_coords_near_gap[col]:
-                        reflected_xz_xy_yz = (
-                            2 * last_col - coord[0],
-                            2 * reflect_y - coord[1],
-                            2 * reflect_z - coord[2],
-                        )
-                        # About 2cm smear around each relfected pixel in each direction
-                        for x_pix in range(-2, 3):
-                            for y_pix in range(-2, 3):
-                                for z_tick in range(-60, 61):
-                                    infill_coords.add(
-                                        (
-                                            reflected_xz_xy_yz[0] + x_pix,
-                                            reflected_xz_xy_yz[1] + y_pix,
-                                            reflected_xz_xy_yz[2] + z_tick
-                                        )
+        # for x_gap_start in x_gaps[::2]:
+        #     last_col = x_gap_start - 1
+        #     if last_col not in x_coords_near_gap:
+        #         continue
+        #     for coord in x_coords_near_gap[last_col]:
+        #         reflect_y, reflect_z = coord[1], coord[2]
+        #         for col in reversed(range(x_gap_start - self.x_gap_size - 1, last_col)):
+        #             if col not in x_coords_near_gap:
+        #                 continue
+        #             for coord in x_coords_near_gap[col]:
+        #                 reflected_xz_xy_yz = (
+        #                     2 * last_col - coord[0],
+        #                     2 * reflect_y - coord[1],
+        #                     2 * reflect_z - coord[2],
+        #                 )
+        #                 for z_tick in range(-5, 5):
+        #                     infill_coords.add(
+        #                         (
+        #                             reflected_xz_xy_yz[0],
+        #                             reflected_xz_xy_yz[1],
+        #                             reflected_xz_xy_yz[2] + z_tick
+        #                         )
+        #                     )
+
+        # for x_gap_end in x_gaps[1::2]:
+        #     first_col = x_gap_end + 1
+        #     if first_col not in x_coords_near_gap:
+        #         continue
+        #     for coord in x_coords_near_gap[first_col]:
+        #         reflect_y, reflect_z = coord[1], coord[2]
+        #         for col in range(first_col + 1, x_gap_end + self.x_gap_size + 2):
+        #             if col not in x_coords_near_gap:
+        #                 continue
+        #             for coord in x_coords_near_gap[col]:
+        #                 reflected_xz_xy_yz = (
+        #                     2 * first_col - coord[0],
+        #                     2 * reflect_y - coord[1],
+        #                     2 * reflect_z - coord[2],
+        #                 )
+        #                 for z_tick in range(-5, 5):
+        #                     infill_coords.add(
+        #                         (
+        #                             reflected_xz_xy_yz[0],
+        #                             reflected_xz_xy_yz[1],
+        #                             reflected_xz_xy_yz[2] + z_tick
+        #                         )
+        #                     )
+
+        for z_gap_start in z_gaps[::2]:
+            for last_col_offset in range(1, 11):
+                last_col = z_gap_start - last_col_offset
+                if last_col not in z_coords_near_gap:
+                    continue
+                for coord in z_coords_near_gap[last_col]:
+                    reflect_x, reflect_y = coord[0], coord[2]
+                    for col in reversed(range(z_gap_start - self.z_gap_size - 1, last_col)):
+                        if col not in z_coords_near_gap:
+                            continue
+                        for coord in z_coords_near_gap[col]:
+                            reflected_xz_xy_yz = (
+                                2 * reflect_x - coord[0],
+                                2 * reflect_y - coord[1],
+                                2 * last_col - coord[2],
+                            )
+                            for z_tick in range(-5, 5):
+                                infill_coords.add(
+                                    (
+                                        reflected_xz_xy_yz[0],
+                                        reflected_xz_xy_yz[1],
+                                        reflected_xz_xy_yz[2] + z_tick
                                     )
+                                )
+
+        for z_gap_end in z_gaps[1::2]:
+            for first_col_offset in range(1, 11):
+                first_col = z_gap_end + first_col_offset
+                if first_col not in z_coords_near_gap:
+                    continue
+                for coord in z_coords_near_gap[first_col]:
+                    reflect_x, reflect_y = coord[0], coord[1]
+                    for col in range(first_col + 1, z_gap_end + self.z_gap_size + 2):
+                        if col not in z_coords_near_gap:
+                            continue
+                        for coord in z_coords_near_gap[col]:
+                            reflected_xz_xy_yz = (
+                                2 * reflect_x - coord[0],
+                                2 * reflect_y - coord[1],
+                                2 * last_col - coord[2],
+                            )
+                            for z_tick in range(-5, 5):
+                                infill_coords.add(
+                                    (
+                                        reflected_xz_xy_yz[0],
+                                        reflected_xz_xy_yz[1],
+                                        reflected_xz_xy_yz[2] + z_tick
+                                    )
+                                )
 
 
-        print(len(infill_coords))
-        DET_PROPS=(
-            "/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
+        # Testing
+        DET_PROPS= (
+            "/home/alex/Documents/extrapolation/larnd-sim/larndsim/detector_properties/"
+            "ndlar-module.yaml"
         )
-        PIXEL_LAYOUT=(
-            "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/"
+        PIXEL_LAYOUT= (
+            "/home/alex/Documents/extrapolation/larnd-sim/larndsim/pixel_layouts/"
             "multi_tile_layout-3.0.40.yaml"
         )
         detector = set_detector_properties(DET_PROPS, PIXEL_LAYOUT, pedestal=74)
+        infill_coords_packed = [[], [], []]
+        for coord in infill_coords:
+            infill_coords_packed[0].append(coord[0])
+            infill_coords_packed[1].append(coord[1])
+            infill_coords_packed[2].append(coord[2])
+        print(len(infill_coords_packed[0]))
         plot_ndlar_voxels(
             masked_adc_coords, masked_adcs, detector,
             pix_cols_per_anode=self.x_gap_spacing, pix_cols_per_gap=self.x_gap_size,
             pix_rows_per_anode=800,
             ticks_per_module=self.z_gap_spacing, ticks_per_gap=self.z_gap_size,
-            infill_coords=list(infill_coords)
+            infill_coords=infill_coords_packed,
+            structure=False,
+            projections=True
         )
         return
 
+
+# Testing
+if __name__ == "__main__":
+    # path = "/share/lustre/awilkins/larnd_infill_data/all/"
+    path = "/home/alex/Documents/extrapolation/larnd_infill/test_data"
+    PIXEL_COLS_PER_ANODE = 256
+    PIXEL_COLS_PER_GAP = 11 # 4.14 / 0.38
+    TICKS_PER_MODULE = 6117
+    TICKS_PER_GAP = 79 # 1.3cm / (0.1us * 0.1648cm/us)
+    # x_gaps = np.zeros(PIXEL_COLS_PER_ANODE * 5 + PIXEL_COLS_PER_GAP * 4)
+    # x_gap_starts = [ (i + 1) * PIXEL_COLS_PER_ANODE + i * PIXEL_COLS_PER_GAP for i in range(5) ]
+    # for start in x_gap_starts:
+    #     x_gaps[start:start+PIXEL_COLS_PER_GAP] = 1
+    # z_gaps = np.zeros(TICKS_PER_MODULE * 7 + TICKS_PER_GAP * 6)
+    # z_gap_starts = [ (i + 1) * TICKS_PER_MODULE + i * TICKS_PER_GAP for i in range(7) ]
+    # for start in z_gap_starts:
+    #     z_gaps[start:start+TICKS_PER_GAP] = 1
+    x_gaps = []
+    for i in range(5):
+        x_gaps.append(PIXEL_COLS_PER_ANODE * (i + 1) + PIXEL_COLS_PER_GAP * i)
+        x_gaps.append(PIXEL_COLS_PER_ANODE * (i + 1) + PIXEL_COLS_PER_GAP * (i + 1) - 1)
+    z_gaps = []
+    for i in range(7):
+        z_gaps.append(TICKS_PER_MODULE * (i + 1) + TICKS_PER_GAP * i)
+        z_gaps.append(TICKS_PER_MODULE * (i + 1) + TICKS_PER_GAP * (i + 1) - 1)
+    dataset = LarndDataset(
+        path,
+        x_gaps, PIXEL_COLS_PER_ANODE, PIXEL_COLS_PER_GAP, PIXEL_COLS_PER_GAP,
+        z_gaps, TICKS_PER_MODULE, TICKS_PER_GAP, TICKS_PER_GAP
+    )
+    dataset_itr = iter(dataset)
+    next(dataset_itr)
+    next(dataset_itr)
+    next(dataset_itr)
+    next(dataset_itr)
+
+
+""" Dead Code
         # Don't apply infill mask where there are no tracks
         xs, ys, zs = [], [], []
         for coord_x, coord_y, coord_z in zip(adc_coords[0], adc_coords[1], adc_coords[2]):
@@ -224,40 +348,4 @@ class LarndDataset(torch.utils.data.Dataset):
             features.append([0, 1])
 
         print(len(coords), len(features))
-
-
-# Testing
-if __name__ == "__main__":
-    path = "/share/lustre/awilkins/larnd_infill_data/all/"
-    # path = "/home/alex/Documents/extrapolation/larnd_infill_test_data"
-    PIXEL_COLS_PER_ANODE = 256
-    PIXEL_COLS_PER_GAP = 11 # 4.14 / 0.38
-    TICKS_PER_MODULE = 6117
-    TICKS_PER_GAP = 79 # 1.3cm / (0.1us * 0.1648cm/us)
-    # x_gaps = np.zeros(PIXEL_COLS_PER_ANODE * 5 + PIXEL_COLS_PER_GAP * 4)
-    # x_gap_starts = [ (i + 1) * PIXEL_COLS_PER_ANODE + i * PIXEL_COLS_PER_GAP for i in range(5) ]
-    # for start in x_gap_starts:
-    #     x_gaps[start:start+PIXEL_COLS_PER_GAP] = 1
-    # z_gaps = np.zeros(TICKS_PER_MODULE * 7 + TICKS_PER_GAP * 6)
-    # z_gap_starts = [ (i + 1) * TICKS_PER_MODULE + i * TICKS_PER_GAP for i in range(7) ]
-    # for start in z_gap_starts:
-    #     z_gaps[start:start+TICKS_PER_GAP] = 1
-    x_gaps = []
-    for i in range(5):
-        x_gaps.append(PIXEL_COLS_PER_ANODE * (i + 1))
-        x_gaps.append(PIXEL_COLS_PER_ANODE * (i + 1) + PIXEL_COLS_PER_GAP - 1)
-    z_gaps = []
-    for i in range(5):
-        z_gaps.append(TICKS_PER_MODULE * (i + 1))
-        z_gaps.append(TICKS_PER_MODULE * (i + 1) + TICKS_PER_GAP - 1)
-    dataset = LarndDataset(
-        path,
-        x_gaps, PIXEL_COLS_PER_ANODE, PIXEL_COLS_PER_GAP, PIXEL_COLS_PER_GAP,
-        z_gaps, TICKS_PER_MODULE, TICKS_PER_GAP, TICKS_PER_GAP
-    )
-    dataset_itr = iter(dataset)
-    next(dataset_itr)
-    next(dataset_itr)
-    next(dataset_itr)
-    next(dataset_itr)
-
+"""

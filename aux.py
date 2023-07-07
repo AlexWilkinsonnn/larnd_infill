@@ -120,7 +120,9 @@ def plot_ndlar_voxels(
     pix_cols_per_anode=256, pix_cols_per_gap=11,
     pix_rows_per_anode=800,
     ticks_per_module=6117, ticks_per_gap=79,
-    infill_coords=[]
+    infill_coords=None,
+    structure=True,
+    projections=False
 ):
     """
     Plot ND-LAr from data that has been voxelised
@@ -132,48 +134,113 @@ def plot_ndlar_voxels(
     norm_adc = matplotlib.colors.Normalize(vmin=0, vmax=300)
     m_adc = matplotlib.cm.ScalarMappable(norm=norm_adc, cmap=matplotlib.cm.jet)
 
-    fig = plt.figure()
-    ax = fig.add_subplot(projection="3d")
+    if projections:
+        fig, ax = plt.subplots(1, 3)
+    else:
+        fig = plt.figure()
+        ax = fig.add_subplot(projection="3d")
+
+    if infill_coords is not None:
+        for coord_x, coord_y, coord_z in zip(*infill_coords):
+            if projections:
+                ax[0].add_patch(
+                    matplotlib.patches.Rectangle(
+                        (coord_x * xy_size, coord_y * xy_size), xy_size, xy_size, fc="green"
+                    )
+                )
+                ax[1].add_patch(
+                    matplotlib.patches.Rectangle(
+                        (coord_x * xy_size, coord_z * z_size), xy_size, z_size * 5, fc="green"
+                    )
+                )
+                ax[2].add_patch(
+                    matplotlib.patches.Rectangle(
+                        (coord_z * z_size, coord_y * xy_size), z_size * 5, xy_size, fc="green"
+                    )
+                )
+
+            else:
+                x = x * xy_size + (coord_x * xy_size)
+                y = y * xy_size + (coord_y * xy_size)
+                z = z * z_size + (coord_z * z_size)
+                ax.plot_surface(x, z, y, color="green")
 
     for coord_x, coord_y, coord_z, adc in zip(*coords, adcs):
-        x, y, z = get_cube()
-        x = x * xy_size + (coord_x * xy_size)
-        y = y * xy_size + (coord_y * xy_size)
-        z = z * z_size + (coord_z * z_size)
+        if projections:
+            ax[0].add_patch(
+                matplotlib.patches.Rectangle(
+                    (coord_x * xy_size, coord_y * xy_size), xy_size, xy_size, fc=m_adc.to_rgba(adc)                )
+            )
+            ax[1].add_patch(
+                matplotlib.patches.Rectangle(
+                    (coord_x * xy_size, coord_z * z_size),
+                    xy_size, z_size * 5, fc=m_adc.to_rgba(adc)
+                )
+            )
+            ax[2].add_patch(
+                matplotlib.patches.Rectangle(
+                    (coord_z * z_size, coord_y * xy_size),
+                    z_size * 5, xy_size, fc=m_adc.to_rgba(adc)
+                )
+            )
 
-        ax.plot_surface(x, z, y, color=m_adc.to_rgba(adc))
+        else:
+            x, y, z = get_cube()
+            x = x * xy_size + (coord_x * xy_size)
+            y = y * xy_size + (coord_y * xy_size)
+            z = z * z_size + (coord_z * z_size)
+            ax.plot_surface(x, z, y, color=m_adc.to_rgba(adc))
 
-    x_max = (pix_cols_per_anode * 5 + (pix_cols_per_gap * 4)) * xy_size
-    y_max = pix_rows_per_anode * xy_size
-    z_max = (ticks_per_module * 7 + (ticks_per_gap * 6)) * z_size
-    for i in range(4):
-        for coord_x in [
-            pix_cols_per_anode * (i + 1), pix_cols_per_anode * (i + 1) + pix_cols_per_gap
-        ]:
-            x = coord_x * xy_size
-            ax.plot((x, x), (0, 0), (0, y_max), color="black", lw=0.5)
-            ax.plot((x, x), (0, z_max), (y_max, y_max), color="black", lw=0.5)
-            ax.plot((x, x), (z_max, z_max), (y_max, 0), color="black", lw=0.5)
-            ax.plot((x, x), (z_max, 0), (0, 0), color="black", lw=0.5)
+    if structure:
+        if projections:
+            raise NotImplementedError
+        x_max = (pix_cols_per_anode * 5 + (pix_cols_per_gap * 4)) * xy_size
+        y_max = pix_rows_per_anode * xy_size
+        z_max = (ticks_per_module * 7 + (ticks_per_gap * 6)) * z_size
+        for i in range(4):
+            for coord_x in [
+                pix_cols_per_anode * (i + 1), pix_cols_per_anode * (i + 1) + pix_cols_per_gap
+            ]:
+                x = coord_x * xy_size
+                ax.plot((x, x), (0, 0), (0, y_max), color="black", lw=0.5)
+                ax.plot((x, x), (0, z_max), (y_max, y_max), color="black", lw=0.5)
+                ax.plot((x, x), (z_max, z_max), (y_max, 0), color="black", lw=0.5)
+                ax.plot((x, x), (z_max, 0), (0, 0), color="black", lw=0.5)
 
-    for i in range(6):
-        for coord_z in [ticks_per_module * (i + 1), ticks_per_module * (i + 1) + ticks_per_gap]:
-            z = coord_z * z_size
-            ax.plot((0, 0), (z, z), (0, y_max), color="black", lw=0.5)
-            ax.plot((0, x_max), (z, z), (y_max, y_max),color="black", lw=0.5)
-            ax.plot((x_max, x_max), (z, z), (y_max, 0), color="black", lw=0.5)
-            ax.plot((x_max, 0), (z, z),(0, 0),  color="black", lw=0.5)
+        for i in range(6):
+            for coord_z in [
+                ticks_per_module * (i + 1), ticks_per_module * (i + 1) + ticks_per_gap
+            ]:
+                z = coord_z * z_size
+                ax.plot((0, 0), (z, z), (0, y_max), color="black", lw=0.5)
+                ax.plot((0, x_max), (z, z), (y_max, y_max),color="black", lw=0.5)
+                ax.plot((x_max, x_max), (z, z), (y_max, 0), color="black", lw=0.5)
+                ax.plot((x_max, 0), (z, z),(0, 0),  color="black", lw=0.5)
 
-    ax.set_xlim(0, detector.tpc_borders[-1][0][1] - detector.tpc_borders[0][0][0])
-    ax.set_ylim(0, detector.tpc_borders[-1][2][0] - detector.tpc_borders[0][2][0])
-    ax.set_zlim(0, detector.tpc_borders[-1][1][1] - detector.tpc_borders[0][1][0])
-    ax.set_box_aspect((4,8,4))
-    ax.grid(False)
-    ax.xaxis.set_major_locator(plt.MaxNLocator(5))
-    ax.yaxis.set_major_locator(plt.MaxNLocator(5))
-    ax.w_xaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
-    ax.w_yaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
-    ax.w_zaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
+    if projections:
+        ax[0].set_xlim(0, detector.tpc_borders[-1][0][1] - detector.tpc_borders[0][0][0])
+        ax[1].set_xlim(0, detector.tpc_borders[-1][0][1] - detector.tpc_borders[0][0][0])
+        ax[2].set_xlim(0, detector.tpc_borders[-1][2][0] - detector.tpc_borders[0][2][0])
+        ax[0].set_ylim(0, detector.tpc_borders[-1][1][1] - detector.tpc_borders[0][1][0])
+        ax[1].set_ylim(0, detector.tpc_borders[-1][2][0] - detector.tpc_borders[0][2][0])
+        ax[2].set_ylim(0, detector.tpc_borders[-1][1][1] - detector.tpc_borders[0][1][0])
+        ax[0].set_xlabel("x")
+        ax[1].set_xlabel("x")
+        ax[2].set_xlabel("z")
+        ax[0].set_ylabel("y")
+        ax[1].set_ylabel("z")
+        ax[2].set_ylabel("y")
+    else:
+        ax.set_xlim(0, detector.tpc_borders[-1][0][1] - detector.tpc_borders[0][0][0])
+        ax.set_ylim(0, detector.tpc_borders[-1][2][0] - detector.tpc_borders[0][2][0])
+        ax.set_zlim(0, detector.tpc_borders[-1][1][1] - detector.tpc_borders[0][1][0])
+        ax.set_box_aspect((4,8,4))
+        ax.grid(False)
+        ax.xaxis.set_major_locator(plt.MaxNLocator(5))
+        ax.yaxis.set_major_locator(plt.MaxNLocator(5))
+        ax.w_xaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
+        ax.w_yaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
+        ax.w_zaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
 
     plt.show()
 
