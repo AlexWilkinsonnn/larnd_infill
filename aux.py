@@ -150,12 +150,12 @@ def plot_ndlar_voxels(
                 )
                 ax[1].add_patch(
                     matplotlib.patches.Rectangle(
-                        (coord_x * xy_size, coord_z * z_size), xy_size, z_size * 5, fc="green"
+                        (coord_x * xy_size, coord_z * z_size), xy_size, z_size, fc="green"
                     )
                 )
                 ax[2].add_patch(
                     matplotlib.patches.Rectangle(
-                        (coord_z * z_size, coord_y * xy_size), z_size * 5, xy_size, fc="green"
+                        (coord_z * z_size, coord_y * xy_size), z_size, xy_size, fc="green"
                     )
                 )
 
