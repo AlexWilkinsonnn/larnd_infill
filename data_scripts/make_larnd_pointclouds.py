@@ -8,17 +8,17 @@ from larpixsoft.funcs import get_events_no_cuts
 
 from aux import plot_ndlar_voxels
 
-# DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
-# PIXEL_LAYOUT=(
-#     "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
-# )
-DET_PROPS=(
-    "/home/alex/Documents/extrapolation/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
-)
+DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
 PIXEL_LAYOUT=(
-    "/home/alex/Documents/extrapolation/larnd-sim/larndsim/pixel_layouts/"
-    "multi_tile_layout-3.0.40.yaml"
+    "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
 )
+# DET_PROPS=(
+#     "/home/alex/Documents/extrapolation/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
+# )
+# PIXEL_LAYOUT=(
+#     "/home/alex/Documents/extrapolation/larnd-sim/larndsim/pixel_layouts/"
+#     "multi_tile_layout-3.0.40.yaml"
+# )
 PIXEL_COL_OFFSET = 128
 PIXEL_COLS_PER_ANODE = 256
 PIXEL_COLS_PER_GAP = 11 # 4.14 / 0.38
@@ -30,6 +30,14 @@ TICKS_PER_GAP = 79 # 1.3cm / (0.1us * 0.1648cm/us)
 
 
 def main(args):
+    if args.z_downsample == 1:
+        pass
+    elif args.z_downsample == 10:
+        TICKS_PER_MODULE = 612
+        TICKS_PER_GAP = 8
+    else:
+        raise NotImplementedError("z_downsample = {}".format(args.z_downsample))
+
     detector = set_detector_properties(DET_PROPS, PIXEL_LAYOUT, pedestal=74)
     geometry = get_geom_map(PIXEL_LAYOUT)
 
@@ -77,6 +85,7 @@ def main(args):
 
             # This is either caused by longitudinal diffusion, or the interactions with the LAr
             # taking a non negligible amount of time ie. not being instantaneous with the t_0 flash
+            # I dont think its the second one though, think the entire interaction is sub ns
             if p.z() > 50.4:
                 num_high_z += 1
                 continue
@@ -93,9 +102,15 @@ def main(args):
             coords[1].append(voxel_y)
 
             if p.io_group in [1, 2]:
-                voxel_z = math.floor(p.z() / (detector.time_sampling * detector.vdrift))
+                voxel_z = math.floor(
+                    (p.z() / (detector.time_sampling * detector.vdrift)) /
+                    (100.8 / TICKS_PER_MODULE)
+                )
             else:
-                voxel_z = math.floor((100.8 - p.z()) / (detector.time_sampling * detector.vdrift))
+                voxel_z = math.floor(
+                    ((100.8 - p.z()) / (detector.time_sampling * detector.vdrift)) /
+                    (100.8 / TICKS_PER_MODULE)
+                )
             voxel_zs.append(voxel_z)
             voxel_z += TICK_OFFSET
             voxel_z += tpc_offsets_z.index(p.anode.tpc_z) * (TICKS_PER_MODULE + TICKS_PER_GAP)
@@ -137,7 +152,7 @@ def parse_arguments():
     parser.add_argument("output_dir")
 
     parser.add_argument("--plot_only", action="store_true")
-    parser.add_argument("--z_dowmsample", type=int, default=1)
+    parser.add_argument("--z_downsample", type=int, default=1)
 
     args = parser.parse_args()
 
