@@ -34,6 +34,8 @@ class LarndDataset(torch.utils.data.Dataset):
                 break
 
             data = sparse.load_npz(os.path.join(data_dir, f))
+            if len(data.coords[0]) > 1500:
+                continue
             self.data.append(data)
 
             if mask_type == MaskType.REFLECTION:

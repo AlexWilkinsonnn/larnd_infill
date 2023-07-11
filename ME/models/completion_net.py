@@ -206,7 +206,6 @@ class CompletionNet(nn.Module):
         enc_s16 = self.enc_block_s8s16(enc_s8)
         enc_s32 = self.enc_block_s16s32(enc_s16)
         enc_s64 = self.enc_block_s32s64(enc_s32)
-        print(enc_s64.shape)
 
         ##################################################
         # Decoder 64 -> 32
@@ -271,6 +270,7 @@ class CompletionNet(nn.Module):
         ##################################################
         # Decoder 8 -> 4
         ##################################################
+        # print("dec_s8", dec_s8.shape)
         dec_s4 = self.dec_block_s8s4(dec_s8)
 
         # Add encoder features
@@ -291,6 +291,7 @@ class CompletionNet(nn.Module):
         ##################################################
         # Decoder 4 -> 2
         ##################################################
+        # print("dec_s4", dec_s4.shape)
         dec_s2 = self.dec_block_s4s2(dec_s4)
 
         # Add encoder features
@@ -311,6 +312,8 @@ class CompletionNet(nn.Module):
         ##################################################
         # Decoder 2 -> 1
         ##################################################
+        # print("dec_s2", dec_s2.shape)
+        # print()
         dec_s1 = self.dec_block_s2s1(dec_s2)
         # dec_s1_cls = self.dec_s1_cls(dec_s1)
 

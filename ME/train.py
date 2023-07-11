@@ -48,6 +48,7 @@ scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
 print("LR {}".format(scheduler.get_lr()))
 
 crit = nn.BCEWithLogitsLoss()
+# crit = nn.MSELoss()
 
 net.train()
 train_iter = iter(dataloader)
@@ -76,14 +77,20 @@ for i in range(10000):
         t0 = time.time()
         print("Iter: {}, Loss: {:.3f}, Time: {:.3f}".format(i + 1, loss.item(), t_iter))
 
-    if (i + 1) % 250 == 0:
-        print(mask_x)
-        print(mask_z)
-        plot_ndlar_voxels(
-            [ [ el.item() for el in row ] for row in s_pred.C ],
-            [ row.item() for row in s_pred.F ],
-            detector, structure=False, projections=True
-        )
+    if (i + 1) % 100 == 0:
+        for i_batch, (coords, feats) in enumerate(zip(*s_pred.decomposed_coordinates_and_features)):
+            coords = coords.cpu()
+            print(mask_x[i_batch])
+            print(mask_z[i_batch])
+            coords_packed = [[], [], []]
+            for coord in coords:
+                coords_packed[0].append(coord[0].item())
+                coords_packed[1].append(coord[1].item())
+                coords_packed[2].append(coord[2].item())
+            plot_ndlar_voxels(
+                coords_packed, [ row.item() for row in feats ],
+                detector, structure=False, projections=True
+            )
         scheduler.step()
         print("LR {}".format(scheduler.get_lr()))
 

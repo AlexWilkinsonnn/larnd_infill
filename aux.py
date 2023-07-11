@@ -122,14 +122,15 @@ def plot_ndlar_voxels(
     ticks_per_module=6117, ticks_per_gap=79,
     infill_coords=None,
     structure=True,
-    projections=False
+    projections=False,
+    z_downsample=1
 ):
     """
     Plot ND-LAr from data that has been voxelised
     (array is too large to use Axes3D.voxels so drawing surfaces)
     """
     xy_size = detector.pixel_pitch
-    z_size = detector.time_sampling * detector.vdrift
+    z_size = detector.time_sampling * detector.vdrift * z_downsample
 
     norm_adc = matplotlib.colors.Normalize(vmin=0, vmax=300)
     m_adc = matplotlib.cm.ScalarMappable(norm=norm_adc, cmap=matplotlib.cm.jet)
@@ -193,6 +194,8 @@ def plot_ndlar_voxels(
 
     if structure:
         if projections:
+            raise NotImplementedError
+        if z_downsample != 1:
             raise NotImplementedError
         x_max = (pix_cols_per_anode * 5 + (pix_cols_per_gap * 4)) * xy_size
         y_max = pix_rows_per_anode * xy_size

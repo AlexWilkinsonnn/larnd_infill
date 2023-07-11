@@ -137,6 +137,7 @@ def parse_arguments():
     parser.add_argument("output_dir")
 
     parser.add_argument("--plot_only", action="store_true")
+    parser.add_argument("--z_dowmsample", type=int, default=1)
 
     args = parser.parse_args()
 
