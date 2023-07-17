@@ -19,54 +19,61 @@ PIXEL_LAYOUT=(
 #     "/home/alex/Documents/extrapolation/larnd-sim/larndsim/pixel_layouts/"
 #     "multi_tile_layout-3.0.40.yaml"
 # )
-PIXEL_COL_OFFSET = 128
-PIXEL_COLS_PER_ANODE = 256
-PIXEL_COLS_PER_GAP = 11 # 4.14 / 0.38
-PIXEL_ROWS_PER_ANODE = 800
-PIXEL_ROW_OFFSET = 405
-TICK_OFFSET = 0
-TICKS_PER_MODULE = 6117
-TICKS_PER_GAP = 79 # 1.3cm / (0.1us * 0.1648cm/us)
 
 
 def main(args):
+    detector = set_detector_properties(DET_PROPS, PIXEL_LAYOUT, pedestal=74)
+    geometry = get_geom_map(PIXEL_LAYOUT)
+
+    if detector.vdrift != 0.1596452482154287:
+        raise ValueError("Expected vdrift=0.1596452482154287 got {}".format(detector.vdrift))
+
+    PIXEL_COL_OFFSET = 128
+    PIXEL_COLS_PER_ANODE = 256
+    PIXEL_COLS_PER_GAP = 11 # 4.14 / 0.38
+    PIXEL_ROWS_PER_ANODE = 800
+    PIXEL_ROW_OFFSET = 405
+
     if args.z_downsample == 1:
-        pass
+        TICK_OFFSET = 0
+        TICKS_PER_MODULE = 6314
+        TICKS_PER_GAP = 81 # 1.3cm / (0.1us * 0.1596452482154287cm/us)
     elif args.z_downsample == 10:
         TICKS_PER_MODULE = 612
         TICKS_PER_GAP = 8
     else:
-        raise NotImplementedError("z_downsample = {}".format(args.z_downsample))
+        raise NotImplementedError("z_downsample={}".format(args.z_downsample))
 
-    detector = set_detector_properties(DET_PROPS, PIXEL_LAYOUT, pedestal=74)
-    geometry = get_geom_map(PIXEL_LAYOUT)
 
     f = h5py.File(args.input_file, "r")
 
     # print(detector.tpc_borders)
-    # print(detector.pixel_pitch)
-    # print(detector.vdrift)
-    # print(detector.time_sampling)
-    # print((356.7 - 255.9) / (0.1 * 0.1648))
+    # print(detector.pixel_pitch) # 0.38
+    # print(detector.vdrift) # 0.1596452482154287
+    # print(detector.time_sampling) # 0.1
     # print(detector.tpc_offsets)
-    # import sys; sys.exit()
+    # return
 
     # xs, ys = [], []
+    # ys_raw = []
     # for x, y in geometry.values():
     #     xs.append(math.floor(x / detector.pixel_pitch))
     #     ys.append(math.floor(y / detector.pixel_pitch))
+    #     ys_raw.append(y - detector.pixel_pitch / 2)
     # print(min(xs), max(xs))
     # print(min(ys), max(ys))
-    # import sys; sys.exit()
+    # print(min(ys_raw), max(ys_raw))
+    # return
     # -128 127 (x)
     # -405 394 (y)
+    # -154.0, 149.62 (y_raw)
 
     packets = get_events_no_cuts(
         f['packets'], f['mc_packets_assn'], f['tracks'], geometry, detector, no_tracks=True
     )
 
-    tpc_offsets_x = sorted(list(set(offsets[0] for offsets in detector.tpc_offsets )))
-    tpc_offsets_z = sorted(list(set(offsets[2] for offsets in detector.tpc_offsets )))
+    tpc_offsets_x = sorted(list(set(offsets[0] for offsets in detector.tpc_offsets)))
+    tpc_offsets_z = sorted(list(set(offsets[2] for offsets in detector.tpc_offsets)))
 
     for i_ev, event_packets in enumerate(packets):
         coords = [[], [], []]
