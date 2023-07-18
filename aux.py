@@ -302,33 +302,35 @@ def plot_ndlar_voxels(
 
 
 def plot_ndlar_voxels_2(
-    coords, adcs, detector, x_vox2pos, y_vox2pos, z_vox2pos, x_vox2size, y_vox2size, z_vox2size,
-    z_scalefactor=1
+    coords, feats, detector, x_vmap, y_vmap, z_vmap, z_scalefactor=1, max_feat=300
 ):
-    norm_adc = matplotlib.colors.Normalize(vmin=0, vmax=300)
-    m_adc = matplotlib.cm.ScalarMappable(norm=norm_adc, cmap=matplotlib.cm.jet)
+    norm_feats = matplotlib.colors.Normalize(vmin=0, vmax=max_feat)
+    m_feats = matplotlib.cm.ScalarMappable(norm=norm_feats, cmap=matplotlib.cm.jet)
 
     fig, ax = plt.subplots(1, 3)
 
-    for coord_x, coord_y, coord_z, adc in zip(*coords, adcs):
-        x_pos, x_size = x_vox2pos[coord_x], x_vox2size[coord_x]
-        y_pos, y_size = y_vox2pos[coord_y], y_vox2size[coord_y]
-        z_pos, z_size = z_vox2pos[coord_z], z_vox2size[coord_z] * z_scalefactor
+    for coord_x, coord_y, coord_z, feat in zip(*coords, feats):
+        x_bin = x_vmap[coord_x]
+        x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
+        y_bin = y_vmap[coord_y]
+        y_size, y_pos = y_bin[1] - y_bin[0], y_bin[0]
+        z_bin = z_vmap[coord_z]
+        z_size, z_pos = (z_bin[1] - z_bin[0]) * z_scalefactor, z_bin[0]
         ax[0].add_patch(
-            matplotlib.patches.Rectangle((x_pos, y_pos), x_size, y_size, fc=m_adc.to_rgba(adc))
+            matplotlib.patches.Rectangle((x_pos, y_pos), x_size, y_size, fc=m_feats.to_rgba(feat))
         )
         ax[1].add_patch(
-            matplotlib.patches.Rectangle((x_pos, z_pos), x_size, z_size, fc=m_adc.to_rgba(adc))
+            matplotlib.patches.Rectangle((x_pos, z_pos), x_size, z_size, fc=m_feats.to_rgba(feat))
         )
         ax[2].add_patch(
-            matplotlib.patches.Rectangle((z_pos, y_pos), z_size, y_size, fc=m_adc.to_rgba(adc))
+            matplotlib.patches.Rectangle((z_pos, y_pos), z_size, y_size, fc=m_feats.to_rgba(feat))
         )
-    ax[0].set_xlim(0, detector.tpc_borders[-1][0][1] - detector.tpc_borders[0][0][0])
-    ax[1].set_xlim(0, detector.tpc_borders[-1][0][1] - detector.tpc_borders[0][0][0])
-    ax[2].set_xlim(0, detector.tpc_borders[-1][2][0] - detector.tpc_borders[0][2][0])
-    ax[0].set_ylim(0, detector.tpc_borders[-1][1][1] - detector.tpc_borders[0][1][0])
-    ax[1].set_ylim(0, detector.tpc_borders[-1][2][0] - detector.tpc_borders[0][2][0])
-    ax[2].set_ylim(0, detector.tpc_borders[-1][1][1] - detector.tpc_borders[0][1][0])
+    ax[0].set_xlim(detector.tpc_borders[-1][0][1], detector.tpc_borders[0][0][0])
+    ax[1].set_xlim(detector.tpc_borders[-1][0][1], detector.tpc_borders[0][0][0])
+    ax[2].set_xlim(detector.tpc_borders[-1][2][0], detector.tpc_borders[0][2][0])
+    ax[0].set_ylim(detector.tpc_borders[-1][1][1], detector.tpc_borders[0][1][0])
+    ax[1].set_ylim(detector.tpc_borders[-1][2][0], detector.tpc_borders[0][2][0])
+    ax[2].set_ylim(detector.tpc_borders[-1][1][1], detector.tpc_borders[0][1][0])
     ax[0].set_xlabel("x")
     ax[1].set_xlabel("x")
     ax[2].set_xlabel("z")
@@ -336,5 +338,6 @@ def plot_ndlar_voxels_2(
     ax[1].set_ylabel("z")
     ax[2].set_ylabel("y")
 
+    fig.tight_layout()
     plt.show()
 
