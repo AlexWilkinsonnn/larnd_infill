@@ -1,4 +1,6 @@
+pixel_pitch: 0.38
 preset: 0
+vdrift: 0.1596452482154287
 x:
   0: &id001 !!python/tuple
   - 413.72
