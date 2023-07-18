@@ -3,7 +3,7 @@ import matplotlib; from matplotlib import pyplot as plt
 import mpl_toolkits.mplot3d.art3d as art3d
 
 
-def plot_ndlar(packets, detector, tracks=None, structures=True):
+def plot_ndlar(packets, detector, tracks=None, structures=True, projections=False):
     """Plots ND-LAr with packets from a single event and optionally tracks"""
     xy_size = detector.pixel_pitch
     z_size = detector.time_sampling * detector.vdrift
@@ -11,27 +11,65 @@ def plot_ndlar(packets, detector, tracks=None, structures=True):
     norm_adc = matplotlib.colors.Normalize(vmin=0, vmax=300)
     m_adc = matplotlib.cm.ScalarMappable(norm=norm_adc, cmap=matplotlib.cm.jet)
 
-    fig = plt.figure()
-    ax = fig.add_subplot(projection="3d")
+    if projections:
+        fig, ax = plt.subplots(1, 3)
+    else:
+        fig = plt.figure()
+        ax = fig.add_subplot(projection="3d")
 
-    for p in packets:
-        # if p.z() > 50.4:
-        #     continue
-        x, y, z = get_cube()
-        x = x * xy_size + p.x + p.anode.tpc_x
-        y = y * xy_size + p.y + p.anode.tpc_y
-        z = z * z_size + p.z_global()
-        ax.plot_surface(x, z, y, color=m_adc.to_rgba(p.ADC))
-
-    if tracks is not None:
-        for t in tracks:
-            ax.plot(
-                (t.x_start, t.x_end), (t.y_start, t.y_end), (t.z_start, t.z_end),
-                color="r", linewidth=0.5
+    max_z_local = max(p.z() for p in packets)
+    z_local_shift = min(50.4 - max_z_local, 0)
+    print(z_local_shift)
+    print(sorted(p.z() for p in packets)[-10:])
+    if projections:
+        for p in packets:
+            if p.z() > 60:
+                print(p.z(), p.ADC, p.x, p.y)
+                print(p.t_0, p.timestamp)
+                continue
+            # Cant remember if these are centres of pixels of corners?
+            x = p.x + p.anode.tpc_x - (xy_size / 2)
+            y = p.y + p.anode.tpc_y - (xy_size / 2)
+            z = p.z_global() + z_local_shift
+            adc = p.ADC
+            # print(p.x, p.y, p.z())
+            z_size_scaled = z_size * 5
+            ax[0].add_patch(
+                matplotlib.patches.Rectangle((x, y), xy_size, xy_size, fc=m_adc.to_rgba(adc))
             )
+            ax[1].add_patch(
+                matplotlib.patches.Rectangle((x, z), xy_size, z_size_scaled, fc=m_adc.to_rgba(adc))
+            )
+            ax[2].add_patch(
+                matplotlib.patches.Rectangle((z, y), z_size_scaled, xy_size, fc=m_adc.to_rgba(adc))
+            )
+        if tracks is not None:
+            for t in tracks:
+                ax[0].plot((t.x_start, t.x_end), (t.y_start, t.y_end), color="r", linewidth=0.5)
+                ax[1].plot((t.x_start, t.x_end), (t.z_start, t.z_end), color="r", linewidth=0.5)
+                ax[2].plot((t.z_start, t.z_end), (t.y_start, t.y_end), color="r", linewidth=0.5)
+
+    else:
+        for p in packets:
+            if p.z() > 50.4:
+                continue
+            x, y, z = get_cube()
+            x = x * xy_size + p.x + p.anode.tpc_x
+            y = y * xy_size + p.y + p.anode.tpc_y
+            z = z * z_size + p.z_global()
+            ax.plot_surface(x, z, y, color=m_adc.to_rgba(p.ADC))
+
+        if tracks is not None:
+            for t in tracks:
+                ax.plot(
+                    (t.x_start, t.x_end), (t.y_start, t.y_end), (t.z_start, t.z_end),
+                    color="r", linewidth=0.5
+                )
 
     # Magic code to draw ND-LAr modules taken from larnd-sim example
     if structures:
+        if projections:
+            raise NotImplementedError
         for i in range(0, 70, 2):
             anode1 = plt.Rectangle(
                 (detector.tpc_borders[i][0][0], detector.tpc_borders[i][1][0]),
@@ -89,16 +127,30 @@ def plot_ndlar(packets, detector, tracks=None, structures=True):
                 lw=1, color='gray'
             )
 
-    ax.set_xlim(detector.tpc_borders[0][0][0],detector.tpc_borders[-1][0][1])
-    ax.set_ylim(detector.tpc_borders[0][2][0],detector.tpc_borders[-1][2][0])
-    ax.set_zlim(detector.tpc_borders[0][1][0],detector.tpc_borders[-1][1][1])
-    ax.set_box_aspect((4,8,4))
-    ax.grid(False)
-    ax.xaxis.set_major_locator(plt.MaxNLocator(5))
-    ax.yaxis.set_major_locator(plt.MaxNLocator(5))
-    ax.w_xaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
-    ax.w_yaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
-    ax.w_zaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
+    if projections:
+        ax[0].set_xlim(detector.tpc_borders[-1][0][1], detector.tpc_borders[0][0][0])
+        ax[1].set_xlim(detector.tpc_borders[-1][0][1], detector.tpc_borders[0][0][0])
+        ax[2].set_xlim(detector.tpc_borders[-1][2][0], detector.tpc_borders[0][2][0])
+        ax[0].set_ylim(detector.tpc_borders[-1][1][1], detector.tpc_borders[0][1][0])
+        ax[1].set_ylim(detector.tpc_borders[-1][2][0], detector.tpc_borders[0][2][0])
+        ax[2].set_ylim(detector.tpc_borders[-1][1][1], detector.tpc_borders[0][1][0])
+        ax[0].set_xlabel("x")
+        ax[1].set_xlabel("x")
+        ax[2].set_xlabel("z")
+        ax[0].set_ylabel("y")
+        ax[1].set_ylabel("z")
+        ax[2].set_ylabel("y")
+    else:
+        ax.set_xlim(detector.tpc_borders[0][0][0],detector.tpc_borders[-1][0][1])
+        ax.set_ylim(detector.tpc_borders[0][2][0],detector.tpc_borders[-1][2][0])
+        ax.set_zlim(detector.tpc_borders[0][1][0],detector.tpc_borders[-1][1][1])
+        ax.set_box_aspect((4,8,4))
+        ax.grid(False)
+        ax.xaxis.set_major_locator(plt.MaxNLocator(5))
+        ax.yaxis.set_major_locator(plt.MaxNLocator(5))
+        ax.w_xaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
+        ax.w_yaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
+        ax.w_zaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
 
     plt.show()
 
@@ -131,6 +183,7 @@ def plot_ndlar_voxels(
     """
     xy_size = detector.pixel_pitch
     z_size = detector.time_sampling * detector.vdrift * z_downsample
+    z_size_scale = 5 if z_downsample == 1 else 1
 
     norm_adc = matplotlib.colors.Normalize(vmin=0, vmax=300)
     m_adc = matplotlib.cm.ScalarMappable(norm=norm_adc, cmap=matplotlib.cm.jet)
@@ -175,13 +228,13 @@ def plot_ndlar_voxels(
             ax[1].add_patch(
                 matplotlib.patches.Rectangle(
                     (coord_x * xy_size, coord_z * z_size),
-                    xy_size, z_size * 5, fc=m_adc.to_rgba(adc)
+                    xy_size, z_size * z_size_scale, fc=m_adc.to_rgba(adc)
                 )
             )
             ax[2].add_patch(
                 matplotlib.patches.Rectangle(
                     (coord_z * z_size, coord_y * xy_size),
-                    z_size * 5, xy_size, fc=m_adc.to_rgba(adc)
+                    z_size * z_size_scale, xy_size, fc=m_adc.to_rgba(adc)
                 )
             )
 
@@ -248,29 +301,40 @@ def plot_ndlar_voxels(
     plt.show()
 
 
-def reflect_over_gaps(
-    coords, adcs,
-    pix_cols_per_anode=256, pix_cols_per_gap=11,
-    pix_rows_per_anode=800,
-    ticks_per_module=6117, ticks_per_gap=79
+def plot_ndlar_voxels_2(
+    coords, adcs, detector, x_vox2pos, y_vox2pos, z_vox2pos, x_vox2size, y_vox2size, z_vox2size,
+    z_scalefactor=1
 ):
-    x_gap_edges_low = [ pix_cols_per_anode * (i + 1) + pix_cols_per_gap * i for i in range(5) ]
-    x_gap_edges_high = [
-        pix_cols_per_anode * (i + 1) + pix_cols_per_gap * (i + 1) for i in range(5)
-    ]
-    z_gap_edges_low = [ ticks_per_module * (i + 1) + ticks_per_gap * i for i in range(7) ]
-    z_gap_edges_high = [ ticks_per_module * (i + 1) + ticks_per_gap * (i + 1) for i in range(7) ]
+    norm_adc = matplotlib.colors.Normalize(vmin=0, vmax=300)
+    m_adc = matplotlib.cm.ScalarMappable(norm=norm_adc, cmap=matplotlib.cm.jet)
 
-    print(x_gap_edges_low)
-    print(x_gap_edges_high)
-    print(z_gap_edges_low)
-    print(z_gap_edges_high)
+    fig, ax = plt.subplots(1, 3)
 
+    for coord_x, coord_y, coord_z, adc in zip(*coords, adcs):
+        x_pos, x_size = x_vox2pos[coord_x], x_vox2size[coord_x]
+        y_pos, y_size = y_vox2pos[coord_y], y_vox2size[coord_y]
+        z_pos, z_size = z_vox2pos[coord_z], z_vox2size[coord_z] * z_scalefactor
+        ax[0].add_patch(
+            matplotlib.patches.Rectangle((x_pos, y_pos), x_size, y_size, fc=m_adc.to_rgba(adc))
+        )
+        ax[1].add_patch(
+            matplotlib.patches.Rectangle((x_pos, z_pos), x_size, z_size, fc=m_adc.to_rgba(adc))
+        )
+        ax[2].add_patch(
+            matplotlib.patches.Rectangle((z_pos, y_pos), z_size, y_size, fc=m_adc.to_rgba(adc))
+        )
+    ax[0].set_xlim(0, detector.tpc_borders[-1][0][1] - detector.tpc_borders[0][0][0])
+    ax[1].set_xlim(0, detector.tpc_borders[-1][0][1] - detector.tpc_borders[0][0][0])
+    ax[2].set_xlim(0, detector.tpc_borders[-1][2][0] - detector.tpc_borders[0][2][0])
+    ax[0].set_ylim(0, detector.tpc_borders[-1][1][1] - detector.tpc_borders[0][1][0])
+    ax[1].set_ylim(0, detector.tpc_borders[-1][2][0] - detector.tpc_borders[0][2][0])
+    ax[2].set_ylim(0, detector.tpc_borders[-1][1][1] - detector.tpc_borders[0][1][0])
+    ax[0].set_xlabel("x")
+    ax[1].set_xlabel("x")
+    ax[2].set_xlabel("z")
+    ax[0].set_ylabel("y")
+    ax[1].set_ylabel("z")
+    ax[2].set_ylabel("y")
 
-    # reflected_coords = []
-    # for coord_x, coord_y, coord_z, adc in zip(*coords, adcs):
-    #     if coor
-
-
-
+    plt.show()
 

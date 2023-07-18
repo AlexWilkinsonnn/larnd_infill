@@ -38,7 +38,8 @@ def main(args):
             f['packets'], f['mc_packets_assn'], f['tracks'], geometry, detector, no_tracks=True
         )
         for event_packets in packets:
-            plot_ndlar(event_packets, detector)
+            # plot_ndlar(event_packets, detector)
+            plot_ndlar(event_packets, detector, projections=True, structures=False)
 
 
 def parse_arguments():
