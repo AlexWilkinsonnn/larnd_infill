@@ -8,86 +8,139 @@ import numpy as np
 import yaml
 
 from larpixsoft.detector import set_detector_properties
-from larpixsoft.geometry import get_geom_map
 
 DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
 PIXEL_LAYOUT=(
     "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
 )
+RES=7 # cm at 7 dp (nm)
 
 
 def main(args):
     detector = set_detector_properties(DET_PROPS, PIXEL_LAYOUT, pedestal=74)
-    geometry = get_geom_map(PIXEL_LAYOUT)
+    if args.preset == 0:
+        x_step, y_step = detector.pixel_pitch, detector.pixel_pitch
+        z_step = detector.time_sampling * detector.vdrift
+    elif args.preset == 1:
+        x_step, y_step = detector.pixel_pitch, detector.pixel_pitch
+        z_step =  detector.vdrift
+    else:
+        raise ValueError("No preset={}".format(args.preset))
 
-    y_voxel_map = voxelise_y(detector.tpc_borders[:, 1, :], detector.pixel_pitch)
+    voxel_maps = {
+        "preset" : args.preset, "x_step" : x_step, "y_step" : y_step, "z_step" : z_step
+    }
 
-    x_voxel_map = voxelise_x(detector.tpc_borders[:, 0, :], detector.pixel_pitch)
+    voxel_maps["x"] = voxelise_x(detector.tpc_borders[:, 0, :], x_step)
+    voxel_maps["y"] = voxelise_y(detector.tpc_borders[:, 1, :], y_step)
+    voxel_maps["z"] = voxelise_z(detector.tpc_borders[:, 2, :], z_step)
+    
+    n_voxels_tot = 1
+    print("Number of voxels")
+    for coord in ["x", "y", "z"]:
+        n_voxels = len([ key for key in voxel_maps[coord] if type(key) == tuple ])
+        n_voxels_tot *= n_voxels
+        print("{}: {}".format(coord, n_voxels))
+    print("Total: {}".format(n_voxels_tot))
 
-    if args.type == 0:
-        pass
-        
-        
+    with open(args.out_path, "w") as f:
+        yaml.dump(voxel_maps, f)
 
-    elif args.type == 1:
-        pass
-        
 
 def voxelise_y(borders, step):
-    borders = np.array(
-        sorted({ border for low_high_borders in borders for border in low_high_borders })
-    )
+    borders = np.unique(borders.round(decimals=RES))
 
-    assert borders.size == 2, "Expected all modules to have the same y range"
+    assert borders.size == 2, "Expected all modules to have the same y range: {}".format(borders)
 
     min_coord, max_coord = np.min(borders), np.max(borders)
     bins = np.linspace(min_coord, max_coord, int((max_coord - min_coord) / step) + 1)
 
     voxel_map = {}
-    for i_bin, (bin_l, bin_u) in enumerate(zip(bins[:-1], bins[1:])):
-        voxel_map[i_bin] = (bin_l, bin_u)
-        voxel_map[(bin_l, bin_u)] = i_bin
+    add_bins_to_voxel_map(voxel_map, bins)
 
     return voxel_map
 
 
 def voxelise_x(borders, step):
-    voxel_map = {}
-
-    borders = np.array(
-        sorted({ border for low_high_borders in borders for border in low_high_borders })
-    )
+    borders = np.unique(borders.round(decimals=RES))
 
     gap_sizes = np.diff(borders)[1::2]
-    assertion = all(
-        np.isclose(gap_size_1, gap_size_2) for gap_size_2 in gap_sizes for gap_size_1 in gap_sizes
-    )
-    assert assertion, "Expected equal x gap sizes"
+    assertion = np.unique(gap_sizes.round(decimals=RES)).size == 1
+    assert assertion, "Expected equal x gap sizes: {}".format(gap_sizes)
     gap_size = gap_sizes[0]
 
     module_sizes = np.diff(borders)[::2]
-    assertion = all(
-        np.isclose(module_size_1, module_size_2)
-        for module_size_2 in module_sizes
-            for module_size_1 in module_sizes
-    )
-    assert assertion, "Expected equal x module sizes"
+    assertion = np.unique(module_sizes.round(decimals=RES)).size == 1
+    assert assertion, "Expected equal x module sizes: {}".format(module_sizes)
     module_size = module_sizes[0]
 
     n_bins_module = round(module_size / step)
     n_bins_gap = round(gap_size / step)
-    print(n_bins_module, n_bins_gap)
+
+    voxel_map = {}
+    i_bin_start = 0
+    for border_l, border_u, border_l_next in zip(
+        borders[::2], borders[1::2], np.append(borders, None)[2::2]
+    ):
+        bins = np.linspace(border_l, border_u, n_bins_module + 1)
+        add_bins_to_voxel_map(voxel_map, bins, i_bin_start=i_bin_start)
+        i_bin_start += bins.size - 1
+        if border_l_next is not None:
+            bins = np.linspace(border_u, border_l_next, n_bins_gap + 1)
+            add_bins_to_voxel_map(voxel_map, bins, i_bin_start=i_bin_start)
+            i_bin_start += bins.size - 1
 
     return voxel_map
 
 
+def voxelise_z(borders, step):
+    # anode - cathode - anode - (gap) - anode - ...
+    borders = np.unique(borders.round(decimals=RES))
+    cathode_mask = np.ones(borders.size, dtype=bool)
+    cathode_mask[1::3] = 0
+    borders = borders[cathode_mask]
 
+    gap_sizes = np.diff(borders)[1::2]
+    assertion = np.unique(gap_sizes.round(decimals=RES)).size == 1
+    assert assertion, "Expected equal z gap sizes: {}".format(gap_sizes)
+    gap_size = gap_sizes[0]
+
+    module_sizes = np.diff(borders)[::2]
+    assertion = np.unique(module_sizes.round(decimals=RES)).size == 1
+    assert assertion, "Expected equal z module sizes: {}".format(module_sizes)
+    module_size = module_sizes[0]
+
+    n_bins_module = round(module_size / step)
+    n_bins_gap = round(gap_size / step)
+
+    voxel_map = {}
+    i_bin_start = 0
+    for border_l, border_u, border_l_next in zip(
+        borders[::2], borders[1::2], np.append(borders, None)[2::2]
+    ):
+        bins = np.linspace(border_l, border_u, n_bins_module + 1)
+        add_bins_to_voxel_map(voxel_map, bins, i_bin_start=i_bin_start)
+        i_bin_start += bins.size - 1
+        if border_l_next is not None:
+            bins = np.linspace(border_u, border_l_next, n_bins_gap + 1)
+            add_bins_to_voxel_map(voxel_map, bins, i_bin_start=i_bin_start)
+            i_bin_start += bins.size - 1
+
+    return voxel_map
+
+
+def add_bins_to_voxel_map(voxel_map, bins, i_bin_start=0):
+    for i_bin, (bin_l, bin_u) in enumerate(zip(bins[:-1], bins[1:])):
+        binl_binu = (round(float(bin_l), RES), round(float(bin_u), RES))
+        voxel_map[i_bin + i_bin_start] = binl_binu
+        voxel_map[binl_binu] = i_bin + i_bin_start
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("type", help="0 (no downsampling)|1 (downsample z by 10)")
+    parser.add_argument("out_path", type=str)
+    parser.add_argument("preset", type=int, help="0 (no downsampling)|1 (downsample z by 10)")
 
     args = parser.parse_args()
 
