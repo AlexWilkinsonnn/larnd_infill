@@ -28,8 +28,10 @@ def main(args):
         raise ValueError("No preset={}".format(args.preset))
 
     voxel_maps = {
-        "preset" : args.preset, "x_step" : x_step, "y_step" : y_step, "z_step" : z_step,
-        "vdrift" : detector.vdrift, "pixel_pitch" : detector.pixel_pitch
+        "preset" : args.preset,
+        "x_step_target" : x_step, "y_step_target" : y_step, "z_step_target" : z_step,
+        "vdrift" : detector.vdrift,
+        "pixel_pitch" : detector.pixel_pitch
     }
 
     voxel_maps["x"], voxel_maps["x_gaps"] = voxelise_x(detector.tpc_borders[:, 0, :], x_step)
