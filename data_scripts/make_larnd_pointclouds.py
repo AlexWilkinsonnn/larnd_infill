@@ -7,7 +7,7 @@ from larpixsoft.detector import set_detector_properties
 from larpixsoft.geometry import get_geom_map
 from larpixsoft.funcs import get_events_no_cuts
 
-from aux import plot_ndlar_voxels, plot_ndlar_voxels_2
+from aux import plot_ndlar_voxels_2
 
 DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
 PIXEL_LAYOUT=(
@@ -45,13 +45,15 @@ def main(args):
     z_bin_edges.append(max(bin[1] for bin in vmap["z"] if type(bin) == tuple))
     z_bin_edges = np.array(z_bin_edges)
 
-    z_bin_width = vmap["z_step"]
-
     f = h5py.File(args.input_file, "r")
 
+    tracks = None
     packets = get_events_no_cuts(
         f['packets'], f['mc_packets_assn'], f['tracks'], geometry, detector, no_tracks=True
     )
+    # packets, tracks = get_events_no_cuts(
+    #     f['packets'], f['mc_packets_assn'], f['tracks'], geometry, detector, no_tracks=False
+    # )
 
     for i_ev, event_packets in enumerate(packets):
         voxel_data = {}
@@ -62,14 +64,16 @@ def main(args):
             # if p.ADC == 0:
             #     continue
 
-            if p.z() > 50.4:
-                raise Exception("p.z() > 50.4. {}".format(p.z()))
+            # This still happens rarely.
+            # Accounting for time of interaction with LAr (~0.3us max) and diffusion (~0.02cm max)
+            # does not explain some of the p.z() seen.
+            # Don't understand but ignoring as for most events there are none.
+            if p.z() >= 50.4:
+                continue
 
             coord_x = np.histogram([p.x + p.anode.tpc_x], bins=x_bin_edges)[0].nonzero()[0][0]
             coord_y = np.histogram([p.y + p.anode.tpc_y], bins=y_bin_edges)[0].nonzero()[0][0]
-            coord_z = np.histogram(
-                [p.z_global() + z_bin_width / 2], bins=z_bin_edges
-            )[0].nonzero()[0][0]
+            coord_z = np.histogram([p.z_global(centre=True)], bins=z_bin_edges)[0].nonzero()[0][0]
 
             coord = (coord_x, coord_y, coord_z)
 
@@ -91,14 +95,25 @@ def main(args):
                 feats.append(data[feat_name])
 
         if args.plot_only:
-            # plot_ndlar_voxels_2(
-            #     coords, [ feat[0] for feat in feats ], detector, vmap["x"], vmap["y"], vmap["z"],
-            #     z_scalefactor=1, max_feat=300
-            # )
+            print(i_ev)
             plot_ndlar_voxels_2(
-                coords, [ feat[1] for feat in feats ], detector, vmap["x"], vmap["y"], vmap["z"],
-                z_scalefactor=1, max_feat=20
+                [
+                    [ coord for coord, coord_feat in zip(coords[i], coords[3]) if coord_feat == 0 ]
+                    for i in range(3)
+                ],
+                [ feat for feat, coord_feat in zip(feats, coords[3]) if coord_feat == 0 ],
+                detector, vmap["x"], vmap["y"], vmap["z"],
+                z_scalefactor=1, max_feat=150, tracks=tracks
             )
+            # plot_ndlar_voxels_2(
+            #     [
+            #         [ coord for coord, coord_feat in zip(coords[i], coords[3]) if coord_feat == 1 ]
+            #         for i in range(3)
+            #     ],
+            #     [ feat for feat, coord_feat in zip(feats, coords[3]) if coord_feat == 1 ],
+            #     detector, vmap["x"], vmap["y"], vmap["z"],
+            #     z_scalefactor=1, max_feat=5, tracks=tracks
+            # )
             continue
 
         s_voxelised = sparse.COO(

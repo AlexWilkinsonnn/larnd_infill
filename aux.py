@@ -302,7 +302,7 @@ def plot_ndlar_voxels(
 
 
 def plot_ndlar_voxels_2(
-    coords, feats, detector, x_vmap, y_vmap, z_vmap, z_scalefactor=1, max_feat=300
+    coords, feats, detector, x_vmap, y_vmap, z_vmap, z_scalefactor=1, max_feat=300, tracks=None
 ):
     norm_feats = matplotlib.colors.Normalize(vmin=0, vmax=max_feat)
     m_feats = matplotlib.cm.ScalarMappable(norm=norm_feats, cmap=matplotlib.cm.jet)
@@ -325,6 +325,13 @@ def plot_ndlar_voxels_2(
         ax[2].add_patch(
             matplotlib.patches.Rectangle((z_pos, y_pos), z_size, y_size, fc=m_feats.to_rgba(feat))
         )
+
+    if tracks is not None:
+        for t in tracks:
+            ax[0].plot((t.x_start, t.x_end), (t.y_start, t.y_end), color="r", linewidth=0.5)
+            ax[1].plot((t.x_start, t.x_end), (t.z_start, t.z_end), color="r", linewidth=0.5)
+            ax[2].plot((t.z_start, t.z_end), (t.y_start, t.y_end), color="r", linewidth=0.5)
+
     ax[0].set_xlim(detector.tpc_borders[-1][0][1], detector.tpc_borders[0][0][0])
     ax[1].set_xlim(detector.tpc_borders[-1][0][1], detector.tpc_borders[0][0][0])
     ax[2].set_xlim(detector.tpc_borders[-1][2][0], detector.tpc_borders[0][2][0])
