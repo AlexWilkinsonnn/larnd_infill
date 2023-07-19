@@ -38,12 +38,14 @@ def main(args):
     voxel_maps["y"], voxel_maps["y_gaps"] = voxelise_y(detector.tpc_borders[:, 1, :], y_step)
     voxel_maps["z"], voxel_maps["z_gaps"] = voxelise_z(detector.tpc_borders[:, 2, :], z_step)
 
+    voxel_maps["n_voxels"] = {}
     n_voxels_tot = 1
     print("Number of voxels")
     for coord in ["x", "y", "z"]:
         n_voxels = len([ key for key in voxel_maps[coord] if type(key) == tuple ])
         n_voxels_tot *= n_voxels
         print("{}: {}".format(coord, n_voxels))
+        voxel_maps["n_voxels"][coord] = n_voxels
     print("Total: {}\n".format(n_voxels_tot))
 
     print("Gaps at voxels:")

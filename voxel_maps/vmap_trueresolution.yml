@@ -1,3 +1,7 @@
+n_voxels:
+  x: 1324
+  y: 800
+  z: 44684
 pixel_pitch: 0.38
 preset: 0
 vdrift: 0.1596452482154287
