@@ -1,9 +1,8 @@
 import os, math, time
-from collections import defaultdict
 from enum import Enum
 
 import numpy as np
-import sparse
+import sparse, yaml
 
 import torch
 import MinkowskiEngine as ME
@@ -16,45 +15,51 @@ from aux import plot_ndlar_voxels
 class LarndDataset(torch.utils.data.Dataset):
     """Dataset for reading sparse volexised larnd-sim data and preparing an infill mask"""
     def __init__(
-        self, dataroot, mask_type,
-        x_true_gaps, x_gap_spacing, x_gap_size, x_gap_padding,
-        z_true_gaps, z_gap_spacing, z_gap_size, z_gap_padding,
+        self, dataroot, mask_type, vmap,
+        x_true_gap_padding=None, z_true_gap_padding=None,
         valid=False, max_dataset_size=0, seed=None
-    ):
-        assert(x_gap_size + x_gap_padding < x_gap_spacing)
-        assert(z_gap_size + z_gap_padding < z_gap_spacing)
 
+    ):
         self.mask_type = mask_type
+
+        self.vmap = vmap
+        self.x_true_gaps = np.array(vmap["x_gaps"])
+        self.z_true_gaps = np.array(vmap["z_gaps"])
+
+        self.x_gap_size = self._calc_gap_size(self.x_true_gaps)
+        self.x_gap_spacing = self._calc_gap_spacing(self.x_true_gaps, vmap["n_voxels"]["x"])
+        self.z_gap_size = self._calc_gap_size(self.z_true_gaps)
+        self.z_gap_spacing = self._calc_gap_spacing(self.z_true_gaps, vmap["n_voxels"]["z"])
+
+        self.x_true_gap_padding = (
+            self.x_gap_size if x_true_gap_padding is None else x_true_gap_padding
+        )
+        self.z_true_gap_padding = (
+            self.z_gap_size if z_true_gap_padding is None else z_true_gap_padding
+        )
 
         # data_dir = os.path.join(dataroot, "valid" if valid else "train")
         data_dir = dataroot
-        self.data, self.data_x_coords, self.data_z_coords = [], [], []
+        self.data = []
+        # self.data, self.data_x_coords, self.data_z_coords = [], [], []
         for i, f in enumerate(os.listdir(data_dir)):
             if max_dataset_size and i >= max_dataset_size:
                 break
 
             data = sparse.load_npz(os.path.join(data_dir, f))
-            if len(data.coords[0]) > 1500:
-                continue
+            # if len(data.coords[0]) > 1500:
+            #     continue
             self.data.append(data)
 
-            if mask_type == MaskType.REFLECTION:
-                self.data_x_coords.append(defaultdict(list))
-                self.data_z_coords.append(defaultdict(list))
-                for coord_x, coord_y, coord_z in zip(*data.coords):
-                    coord = (coord_x, coord_y, coord_z)
-                    self.data_x_coords[-1][coord_x].append(coord)
-                    self.data_z_coords[-1][coord_z].append(coord)
+            # if mask_type == MaskType.REFLECTION:
+            #     self.data_x_coords.append(defaultdict(list))
+            #     self.data_z_coords.append(defaultdict(list))
+            #     for coord_x, coord_y, coord_z in zip(*data.coords):
+            #         coord = (coord_x, coord_y, coord_z)
+            #         self.data_x_coords[-1][coord_x].append(coord)
+            #         self.data_z_coords[-1][coord_z].append(coord)
 
-        self.x_true_gaps = x_true_gaps # array of x gap start and end voxels
-        self.x_gap_spacing = x_gap_spacing
-        self.x_gap_size = x_gap_size
-        self.x_gap_padding = x_gap_padding
 
-        self.z_true_gaps = z_true_gaps
-        self.z_gap_spacing = z_gap_spacing
-        self.z_gap_size = z_gap_size
-        self.z_gap_padding = z_gap_padding
 
         if seed is not None:
             np.random.seed(seed)
@@ -68,7 +73,7 @@ class LarndDataset(torch.utils.data.Dataset):
         x_gaps, z_gaps = self._generate_random_mask()
 
         unmasked_coords, unmasked_adcs, masked_coords, masked_adcs = self._apply_mask(
-            data.coords, data.data, x_gaps, z_gaps
+            sparse.DOK.from_coo(data), x_gaps, z_gaps
         )
 
         if self.mask_type == MaskType.LOSS_ONLY:
@@ -76,26 +81,51 @@ class LarndDataset(torch.utils.data.Dataset):
                 unmasked_coords, unmasked_adcs, masked_coords, masked_adcs, x_gaps, z_gaps
             )
         elif self.mask_type == MaskType.REFLECTION:
-            ret = self._getitem_mask_reflection(
-                unmasked_coords, unmasked_adcs, masked_coords, masked_adcs, x_gaps, z_gaps, index
-            )
+            raise NotImplementedError("Need to change this with refactor")
+            # ret = self._getitem_mask_reflection(
+            #     unmasked_coords, unmasked_adcs, masked_coords, masked_adcs, x_gaps, z_gaps, index
+            # )
 
         return ret
 
+    def _calc_gap_size(self, gaps):
+        gap_chunks = np.append(np.insert((np.diff(gaps) != 1).nonzero()[0], 0, 0), gaps.size - 1)
+
+        gap_sizes = np.diff(gap_chunks)
+        gap_sizes[0] += 1
+
+        assertion = np.unique(gap_sizes).size == 1
+        assert assertion, "Expected equal x gap sizes: {}, {}".format(gap_sizes, gaps)
+
+        return gap_sizes[0]
+
+    def _calc_gap_spacing(self, gaps, n_voxels):
+        gap_chunks = np.append(np.insert((np.diff(gaps) != 1).nonzero()[0], 0, 0), gaps.size - 1)
+
+        gap_spacings = [gaps[gap_chunks[0]]]
+        for i_chunk in gap_chunks[1:-1]:
+            gap_spacings.append(gaps[i_chunk + 1] - (gaps[i_chunk] + 1))
+        gap_spacings.append(n_voxels - (gaps[-1] + 1))
+
+        assertion = np.unique(gap_spacings).size == 1
+        assert assertion, "Expected equal x gap spacings: {}, {}".format(gap_spacings, gaps)
+
+        return gap_spacings[0]
+
     def _getitem_mask_loss_only(
-        self, unmasked_coords, unmasked_adcs, masked_coords, masked_adcs, x_gaps, z_gaps
+        self, unmasked_coords, unmasked_feats, masked_coords, masked_feats, x_gaps, z_gaps
     ):
         input_coords, input_feats = [], []
         target_coords, target_feats = [], []
-        for coord, adc in zip(unmasked_coords, unmasked_adcs):
+        for coord, feats in zip(unmasked_coords, unmasked_feats):
             input_coords.append(coord)
-            input_feats.append([adc])
+            input_feats.append(feats)
             target_coords.append(coord)
-            target_feats.append([adc])
+            target_feats.append(feats[0:1]) # Target is adc only, not number of packets stacked
 
-        for coord, adc in zip(masked_coords, masked_adcs):
+        for coord, feats in zip(masked_coords, masked_feats):
             target_coords.append(coord)
-            target_feats.append([adc])
+            target_feats.append(feats[0:1])
 
         return {
             "input_coords" : torch.IntTensor(input_coords),
@@ -148,8 +178,8 @@ class LarndDataset(torch.utils.data.Dataset):
             (
                 np.random.choice([1, -1]) *
                 np.random.randint(
-                    self.x_gap_padding + self.x_gap_size,
-                    self.x_gap_spacing - self.x_gap_padding - self.x_gap_size
+                    self.x_true_gap_padding + self.x_gap_size,
+                    self.x_gap_spacing - self.x_true_gap_padding - self.x_gap_size
                 )
             )
         )
@@ -158,29 +188,43 @@ class LarndDataset(torch.utils.data.Dataset):
             (
                 np.random.choice([1, -1]) *
                 np.random.randint(
-                    self.z_gap_padding + self.z_gap_size,
-                    self.z_gap_spacing - self.z_gap_padding - self.z_gap_size
+                    self.z_true_gap_padding + self.z_gap_size,
+                    self.z_gap_spacing - self.z_true_gap_padding - self.z_gap_size
                 )
             )
         )
 
         return x_gaps, z_gaps
 
-    def _apply_mask(self, coords, adcs, x_gaps, z_gaps):
-        unmasked_coords, unmasked_adcs = [], []
-        masked_coords, masked_adcs = [], []
-        for coord_x, coord_y, coord_z, adc in zip(*coords, adcs):
-            if (
-                any(0 <= coord_x - x_gap_start < self.x_gap_size for x_gap_start in x_gaps[::2]) or
-                any(0 <= coord_z - z_gap_start < self.z_gap_size for z_gap_start in z_gaps[::2])
-            ):
-                masked_coords.append((coord_x, coord_y, coord_z))
-                masked_adcs.append(adc) # masked data will be in target only
-            else:
-                unmasked_coords.append((coord_x, coord_y, coord_z))
-                unmasked_adcs.append(adc)
+    def _apply_mask(self, dok, x_gaps, z_gaps):
+        x_gaps, z_gaps = set(x_gaps), set(z_gaps)
 
-        return unmasked_coords, unmasked_adcs, masked_coords, masked_adcs
+        masked_coords, masked_feats = [], []
+        unmasked_coords, unmasked_feats = [], []
+
+        coords_data = dok.data
+        coords = set(coords_data)
+        num_feats = dok.shape[-1]
+        while coords:
+            coord = next(iter(coords))
+
+            # dok must have an entry for each direction in feature space
+            feats = []
+            for i_feat in range(num_feats):
+                coord = (*coord[:3], i_feat)
+                feats.append(coords_data[coord])
+                coords.remove(coord)
+
+            coord_spatial = list(coord[:3])
+
+            if coord_spatial[0] in x_gaps or coord_spatial[2] in z_gaps:
+                masked_coords.append(coord_spatial)
+                masked_feats.append(feats)
+            else:
+                unmasked_coords.append(coord_spatial)
+                unmasked_feats.append(feats)
+
+        return unmasked_coords, unmasked_feats, masked_coords, masked_feats
 
     # tick_smear=60 is ~1cm each way
     def _reflect_into_x_gap(self, infill_coords, x_gaps, x_coords, x_gap_size, tick_smear=60):
@@ -350,28 +394,19 @@ class MaskType(Enum):
 
 # Testing
 if __name__ == "__main__":
-    path = "/share/rcifdata/awilkins/larnd_infill_data/all"
-    PIXEL_COLS_PER_ANODE = 256
-    PIXEL_COLS_PER_GAP = 11 # 4.14 / 0.38
-    TICKS_PER_MODULE = 6117
-    TICKS_PER_GAP = 79 # 1.3cm / (0.1us * 0.1648cm/us)
-    x_gaps = []
-    for i in range(5):
-        x_gaps.append(PIXEL_COLS_PER_ANODE * (i + 1) + PIXEL_COLS_PER_GAP * i)
-        x_gaps.append(PIXEL_COLS_PER_ANODE * (i + 1) + PIXEL_COLS_PER_GAP * (i + 1) - 1)
-    z_gaps = []
-    for i in range(7):
-        z_gaps.append(TICKS_PER_MODULE * (i + 1) + TICKS_PER_GAP * i)
-        z_gaps.append(TICKS_PER_MODULE * (i + 1) + TICKS_PER_GAP * (i + 1) - 1)
-    dataset = LarndDataset(
-        path, MaskType.LOSS_ONLY,
-        x_gaps, PIXEL_COLS_PER_ANODE, PIXEL_COLS_PER_GAP, PIXEL_COLS_PER_GAP,
-        z_gaps, TICKS_PER_MODULE, TICKS_PER_GAP, TICKS_PER_GAP,
-        max_dataset_size=1000, seed=1
-    )
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, collate_fn=CollateCOO())
+    data_path = "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10/all"
+    vmap_path = "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"
+    with open(vmap_path, "r") as f:
+        vmap = yaml.load(f, Loader=yaml.FullLoader)
+    dataset = LarndDataset(data_path, MaskType.LOSS_ONLY, vmap, max_dataset_size=1000, seed=1)
+    device = torch.device("cuda:0")
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=4, collate_fn=CollateCOO(device))
     dataloader_itr = iter(dataloader)
-    batch = next(dataloader_itr)
+    for i in range(5):
+        s = time.time()
+        batch = next(dataloader_itr)
+        e = time.time()
+        print("{:.4f}".format(e - s))
     print(batch)
     print(batch["input"].shape, batch["target"].shape)
 
