@@ -32,17 +32,22 @@ def main(args):
         "vdrift" : detector.vdrift, "pixel_pitch" : detector.pixel_pitch
     }
 
-    voxel_maps["x"] = voxelise_x(detector.tpc_borders[:, 0, :], x_step)
-    voxel_maps["y"] = voxelise_y(detector.tpc_borders[:, 1, :], y_step)
-    voxel_maps["z"] = voxelise_z(detector.tpc_borders[:, 2, :], z_step)
-    
+    voxel_maps["x"], voxel_maps["x_gaps"] = voxelise_x(detector.tpc_borders[:, 0, :], x_step)
+    voxel_maps["y"], voxel_maps["y_gaps"] = voxelise_y(detector.tpc_borders[:, 1, :], y_step)
+    voxel_maps["z"], voxel_maps["z_gaps"] = voxelise_z(detector.tpc_borders[:, 2, :], z_step)
+
     n_voxels_tot = 1
     print("Number of voxels")
     for coord in ["x", "y", "z"]:
         n_voxels = len([ key for key in voxel_maps[coord] if type(key) == tuple ])
         n_voxels_tot *= n_voxels
         print("{}: {}".format(coord, n_voxels))
-    print("Total: {}".format(n_voxels_tot))
+    print("Total: {}\n".format(n_voxels_tot))
+
+    print("Gaps at voxels:")
+    print("x: {}".format(voxel_maps["x_gaps"]))
+    print("y: {}".format(voxel_maps["y_gaps"]))
+    print("z: {}".format(voxel_maps["z_gaps"]))
 
     with open(args.out_path, "w") as f:
         yaml.dump(voxel_maps, f)
@@ -57,9 +62,10 @@ def voxelise_y(borders, step):
     bins = np.linspace(min_coord, max_coord, int((max_coord - min_coord) / step) + 1)
 
     voxel_map = {}
+    gap_voxels = []
     add_bins_to_voxel_map(voxel_map, bins)
 
-    return voxel_map
+    return voxel_map, gap_voxels
 
 
 def voxelise_x(borders, step):
@@ -79,6 +85,7 @@ def voxelise_x(borders, step):
     n_bins_gap = round(gap_size / step)
 
     voxel_map = {}
+    gap_voxels = []
     i_bin_start = 0
     for border_l, border_u, border_l_next in zip(
         borders[::2], borders[1::2], np.append(borders, None)[2::2]
@@ -88,10 +95,14 @@ def voxelise_x(borders, step):
         i_bin_start += bins.size - 1
         if border_l_next is not None:
             bins = np.linspace(border_u, border_l_next, n_bins_gap + 1)
+
+            for gap_voxel in range(i_bin_start, i_bin_start + bins.size - 1):
+                gap_voxels.append(gap_voxel)
+
             add_bins_to_voxel_map(voxel_map, bins, i_bin_start=i_bin_start)
             i_bin_start += bins.size - 1
 
-    return voxel_map
+    return voxel_map, gap_voxels
 
 
 def voxelise_z(borders, step):
@@ -115,6 +126,7 @@ def voxelise_z(borders, step):
     n_bins_gap = round(gap_size / step)
 
     voxel_map = {}
+    gap_voxels = []
     i_bin_start = 0
     for border_l, border_u, border_l_next in zip(
         borders[::2], borders[1::2], np.append(borders, None)[2::2]
@@ -124,10 +136,14 @@ def voxelise_z(borders, step):
         i_bin_start += bins.size - 1
         if border_l_next is not None:
             bins = np.linspace(border_u, border_l_next, n_bins_gap + 1)
+
+            for gap_voxel in range(i_bin_start, i_bin_start + bins.size - 1):
+                gap_voxels.append(gap_voxel)
+
             add_bins_to_voxel_map(voxel_map, bins, i_bin_start=i_bin_start)
             i_bin_start += bins.size - 1
 
-    return voxel_map
+    return voxel_map, gap_voxels
 
 
 def add_bins_to_voxel_map(voxel_map, bins, i_bin_start=0):
