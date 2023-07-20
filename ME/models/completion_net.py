@@ -7,8 +7,10 @@ class CompletionNet(nn.Module):
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
     DEC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
 
-    def __init__(self, in_nchannel=1, out_nchannel=1):
+    def __init__(self, pointcloud_size, in_nchannel=1, out_nchannel=1):
         nn.Module.__init__(self)
+
+        self.pointcloud_size = pointcloud_size
 
         # Input sparse tensor must have tensor stride 128.
         enc_ch = self.ENC_CHANNELS
@@ -169,11 +171,24 @@ class CompletionNet(nn.Module):
         # pruning
         self.pruning = ME.MinkowskiPruning()
 
-    def _pruning_layer(self, input, keep):
+    def _pruning_layer(self, t, keep):
         if keep.sum().item() == 0:
-            return input
+            return t
 
-        out = self.pruning(input, keep)
+        out = self.pruning(t, keep)
+
+        return out
+
+    def _final_pruning_layer(self, t):
+        """Remove coords outside of active volume"""
+        keep = (
+            (t.C[:, 1] < self.pointcloud_size[0]) *
+            (t.C[:, 2] < self.pointcloud_size[1]) *
+            (t.C[:, 3] < self.pointcloud_size[2])
+        )
+        keep = keep.squeeze()
+
+        out = self.pruning(t, keep)
 
         return out
 
@@ -214,6 +229,7 @@ class CompletionNet(nn.Module):
 
         # Add encoder features
         dec_s32 = dec_s32 + enc_s32
+
         dec_s32_cls = self.dec_s32_cls(dec_s32)
         keep_s32 = (dec_s32_cls.F > 0).squeeze()
 
@@ -234,6 +250,7 @@ class CompletionNet(nn.Module):
 
         # Add encoder features
         dec_s16 = dec_s16 + enc_s16
+
         dec_s16_cls = self.dec_s16_cls(dec_s16)
         keep_s16 = (dec_s16_cls.F > 0).squeeze()
 
@@ -253,6 +270,7 @@ class CompletionNet(nn.Module):
         dec_s8 = self.dec_block_s16s8(dec_s16)
 
         # Add encoder features
+
         dec_s8 = dec_s8 + enc_s8
         dec_s8_cls = self.dec_s8_cls(dec_s8)
         keep_s8 = (dec_s8_cls.F > 0).squeeze()
@@ -275,6 +293,7 @@ class CompletionNet(nn.Module):
 
         # Add encoder features
         dec_s4 = dec_s4 + enc_s4
+
         dec_s4_cls = self.dec_s4_cls(dec_s4)
         keep_s4 = (dec_s4_cls.F > 0).squeeze()
 
@@ -296,6 +315,7 @@ class CompletionNet(nn.Module):
 
         # Add encoder features
         dec_s2 = dec_s2 + enc_s2
+
         dec_s2_cls = self.dec_s2_cls(dec_s2)
         keep_s2 = (dec_s2_cls.F > 0).squeeze()
 
@@ -319,6 +339,7 @@ class CompletionNet(nn.Module):
 
         # # Add encoder features
         dec_s1 = dec_s1 + enc_s1
+
         dec_s1_cls = self.dec_s1_cls(dec_s1)
         keep_s1 = (dec_s1_cls.F > 0).squeeze()
 
@@ -330,11 +351,8 @@ class CompletionNet(nn.Module):
         # if self.training:
         #     keep_s1 += target
 
-        # Remove voxels s1
-        # dec_s1 = self.pruning(dec_s1, keep_s1)
-        # print("dec_s1", dec_s1.shape)
-
         dec_s1_cls = self._pruning_layer(dec_s1_cls, keep_s1)
+        dec_s1_cls = self._final_pruning_layer(dec_s1_cls)
 
         return dec_s1_cls
 

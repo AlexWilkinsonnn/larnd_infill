@@ -46,10 +46,15 @@ class LarndDataset(torch.utils.data.Dataset):
             if max_dataset_size and i >= max_dataset_size:
                 break
 
-            data = sparse.load_npz(os.path.join(data_dir, f))
+            coo = sparse.load_npz(os.path.join(data_dir, f))
+            # coords_feats = {}
+            # for coord, feat in zip(coo.coords, coo.data):
+            #     if coord[:3] not in coords_feats:
+            #         coords_feats[coord[:3]] = 
+            
             # if len(data.coords[0]) > 1500:
             #     continue
-            self.data.append(data)
+            self.data.append(coo)
 
             # if mask_type == MaskType.REFLECTION:
             #     self.data_x_coords.append(defaultdict(list))
@@ -58,8 +63,6 @@ class LarndDataset(torch.utils.data.Dataset):
             #         coord = (coord_x, coord_y, coord_z)
             #         self.data_x_coords[-1][coord_x].append(coord)
             #         self.data_z_coords[-1][coord_z].append(coord)
-
-
 
         if seed is not None:
             np.random.seed(seed)

@@ -302,12 +302,41 @@ def plot_ndlar_voxels(
 
 
 def plot_ndlar_voxels_2(
-    coords, feats, detector, x_vmap, y_vmap, z_vmap, z_scalefactor=1, max_feat=300, tracks=None
+    coords, feats, detector, x_vmap, y_vmap, z_vmap, x_gaps, z_gaps,
+    z_scalefactor=1, max_feat=300, tracks=None, saveas=None
 ):
     norm_feats = matplotlib.colors.Normalize(vmin=0, vmax=max_feat)
     m_feats = matplotlib.cm.ScalarMappable(norm=norm_feats, cmap=matplotlib.cm.jet)
 
-    fig, ax = plt.subplots(1, 3)
+    fig, ax = plt.subplots(1, 3, figsize=(18, 6))
+
+    for x_gap_coord in x_gaps:
+        x_bin = x_vmap[x_gap_coord]
+        x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
+        y_pos = detector.tpc_borders[-1][1][1]
+        y_size = detector.tpc_borders[0][1][0] - detector.tpc_borders[-1][1][1]
+        z_pos = detector.tpc_borders[-1][2][0]
+        z_size = detector.tpc_borders[0][2][0] - detector.tpc_borders[-1][2][0]
+        ax[0].add_patch(
+            matplotlib.patches.Rectangle((x_pos, y_pos), x_size, y_size, fc="gray", alpha=0.3)
+        )
+        ax[1].add_patch(
+            matplotlib.patches.Rectangle((x_pos, z_pos), x_size, z_size, fc="gray", alpha=0.3)
+        )
+
+    for z_gap_coord in z_gaps:
+        z_bin = z_vmap[z_gap_coord]
+        z_size, z_pos = z_bin[1] - z_bin[0], z_bin[0]
+        x_pos = detector.tpc_borders[-1][0][1]
+        x_size = detector.tpc_borders[0][0][0] - detector.tpc_borders[-1][0][1]
+        y_pos = detector.tpc_borders[-1][1][1]
+        y_size = detector.tpc_borders[0][1][0] - detector.tpc_borders[-1][1][1]
+        ax[1].add_patch(
+            matplotlib.patches.Rectangle((x_pos, z_pos), x_size, z_size, fc="gray", alpha=0.3)
+        )
+        ax[2].add_patch(
+            matplotlib.patches.Rectangle((z_pos, y_pos), z_size, y_size, fc="gray", alpha=0.3)
+        )
 
     for coord_x, coord_y, coord_z, feat in zip(*coords, feats):
         x_bin = x_vmap[coord_x]
@@ -346,5 +375,9 @@ def plot_ndlar_voxels_2(
     ax[2].set_ylabel("y")
 
     fig.tight_layout()
-    plt.show()
+    if saveas is not None:
+        plt.savefig(saveas, bbox_inches="tight")
+        plt.close()
+    else:
+        plt.show()
 
