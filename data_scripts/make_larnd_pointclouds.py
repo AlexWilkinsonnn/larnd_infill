@@ -1,7 +1,9 @@
 import argparse, os
+from functools import partialmethod
 
 import sparse, h5py, yaml
 import numpy as np
+from tqdm import tqdm
 
 from larpixsoft.detector import set_detector_properties
 from larpixsoft.geometry import get_geom_map
@@ -138,6 +140,7 @@ def parse_arguments():
     parser.add_argument("vmap", type=str, help="Location of generated voxelisation map to use")
 
     parser.add_argument("--plot_only", action="store_true")
+    parser.add_argument("--batch_mode", action="store_true")
 
     args = parser.parse_args()
 
@@ -146,5 +149,10 @@ def parse_arguments():
 
 if __name__ == "__main__":
     args = parse_arguments()
+
+    if args.batch_mode:
+        tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
+
+
     main(args)
 
