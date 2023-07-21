@@ -80,20 +80,18 @@ for i in range(500000):
                 *s_target.decomposed_coordinates_and_features
             )
         ):
-            coords_pred = coords_pred.cpu()
-            feats_pred = feats_pred.cpu()
-            coords_target = coords_target.cpu()
-            feats_target = feats_target.cpu()
-            batch_mask_x = mask_x[i_batch]
-            batch_mask_z = mask_z[i_batch]
-            coords_packed_predonly = [[], [], []]
-            feats_predonly = []
-            coords_packed = [[], [], []]
-            feats = []
+            coords_pred, feats_pred = coords_pred.cpu(), feats_pred.cpu()
+            coords_target, feats_target = coords_target.cpu(), feats_target.cpu()
+            batch_mask_x, batch_mask_z = mask_x[i_batch], mask_z[i_batch]
+
+            coords_packed, feats = [[], [], []], []
+            coords_packed_predonly, feats_predonly = [[], [], []], []
+
             n_voxels_active_pred = (feats_pred > 1).sum()
             plot_predonly = n_voxels_active_pred < 10000
-            print("Number of predicted coords: {}".format(feats.size()))
+            print("Number of predicted coords: {}".format(feats_pred.size()))
             print("Number of predicted coords with adc > 1.0: {}".format(n_voxels_active_pred))
+
             for coord, feat in zip(coords_pred, feats_pred):
                 if coord[0].item() in batch_mask_x or coord[2].item() in batch_mask_z:
                     coords_packed[0].append(coord[0].item())
@@ -111,6 +109,7 @@ for i in range(500000):
                     coords_packed[1].append(coord[1].item())
                     coords_packed[2].append(coord[2].item())
                     feats.append(feat.item())
+
             plot_ndlar_voxels_2(
                 coords_packed, feats,
                 detector,
