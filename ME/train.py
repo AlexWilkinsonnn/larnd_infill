@@ -54,8 +54,6 @@ for i in range(500000):
 
     optimizer.zero_grad()
 
-    # s_in, in_coords, in_feats = data["input"], data["input_coords"], data["input_feats"]
-    # target_coords, target_feats = data["target_coords"], data["target_feats"]
     s_in, s_target = data["input"], data["target"]
     mask_x, mask_z = data["mask_x"], data["mask_z"]
 
@@ -66,7 +64,6 @@ for i in range(500000):
     loss.backward()
     loss_acc.append(loss.item())
     optimizer.step()
-    t2 = time.time() - t0
 
     if (i + 1) % 200 == 0:
         t_iter = time.time() - t0
@@ -89,14 +86,25 @@ for i in range(500000):
             feats_target = feats_target.cpu()
             batch_mask_x = mask_x[i_batch]
             batch_mask_z = mask_z[i_batch]
+            coords_packed_predonly = [[], [], []]
+            feats_predonly = []
             coords_packed = [[], [], []]
             feats = []
+            n_voxels_active_pred = (feats_pred > 1).sum()
+            plot_predonly = n_voxels_active_pred < 10000
+            print("Number of predicted coords: {}".format(feats.size()))
+            print("Number of predicted coords with adc > 1.0: {}".format(n_voxels_active_pred))
             for coord, feat in zip(coords_pred, feats_pred):
                 if coord[0].item() in batch_mask_x or coord[2].item() in batch_mask_z:
                     coords_packed[0].append(coord[0].item())
                     coords_packed[1].append(coord[1].item())
                     coords_packed[2].append(coord[2].item())
                     feats.append(feat.item())
+                if plot_predonly and feat.item() > 1:
+                    coords_packed_predonly[0].append(coord[0].item())
+                    coords_packed_predonly[1].append(coord[1].item())
+                    coords_packed_predonly[2].append(coord[2].item())
+                    feats_predonly.append(feat.item())
             for coord, feat in zip(coords_target, feats_target):
                 if coord[0].item() not in batch_mask_x and coord[2].item() not in batch_mask_z:
                     coords_packed[0].append(coord[0].item())
@@ -109,6 +117,13 @@ for i in range(500000):
                 vmap["x"], vmap["y"], vmap["z"],
                 batch_mask_x, batch_mask_z,
                 saveas="tests/iter{}_pred.pdf".format(i + 1)
+            )
+            plot_ndlar_voxels_2(
+                coords_packed_predonly, feats_predonly,
+                detector,
+                vmap["x"], vmap["y"], vmap["z"],
+                batch_mask_x, batch_mask_z,
+                saveas="tests/iter{}_pred_predonly.pdf".format(i + 1)
             )
 
     if (i + 1) % 5000 == 0:
