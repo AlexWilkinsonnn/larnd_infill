@@ -33,7 +33,7 @@ net = CompletionNet(
 )
 net.to(DEVICE)
 
-dataset = LarndDataset(DATA_PATH, MaskType.LOSS_ONLY, vmap, max_dataset_size=50000, seed=1)
+dataset = LarndDataset(DATA_PATH, MaskType.LOSS_ONLY, vmap, 2, 1, max_dataset_size=5000, seed=1)
 
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, collate_fn=CollateCOO(DEVICE))
 
@@ -57,7 +57,12 @@ for i in range(500000):
     s_in, s_target = data["input"], data["target"]
     mask_x, mask_z = data["mask_x"], data["mask_z"]
 
-    s_pred = net(s_in)
+    try:
+        s_pred = net(s_in)
+    except ValueError as e:
+        print(s_in)
+        print(s_in.shape())
+        raise e
     target_feats_padded = s_target.features_at_coordinates(s_pred.C.type(torch.float32))
     loss = crit(s_pred.F.squeeze(), target_feats_padded.squeeze())
 

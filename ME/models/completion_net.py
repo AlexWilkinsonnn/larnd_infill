@@ -188,7 +188,16 @@ class CompletionNet(nn.Module):
         )
         keep = keep.squeeze()
 
-        out = self.pruning(t, keep)
+        if keep.sum().item() == 0:
+            print("keep.sum().item() == 0 in final pruning layer")
+            return t
+        
+        try:
+            out = self.pruning(t, keep)
+        except RunTimeError as e:
+            print(keep)
+            print(keep.shape())
+            raise e
 
         return out
 
@@ -353,6 +362,8 @@ class CompletionNet(nn.Module):
 
         dec_s1_cls = self._pruning_layer(dec_s1_cls, keep_s1)
         dec_s1_cls = self._final_pruning_layer(dec_s1_cls)
+
+        print(dec_s1_cls.shape)
 
         return dec_s1_cls
 
