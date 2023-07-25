@@ -242,13 +242,6 @@ class CompletionNet(nn.Module):
         dec_s32_cls = self.dec_s32_cls(dec_s32)
         keep_s32 = (dec_s32_cls.F > 0).squeeze()
 
-        # target = self.get_target(dec_s32, target_key)
-        # targets.append(target)
-        # out_cls.append(dec_s32_cls)
-
-        # if self.training:
-        #     keep_s32 += target
-
         # Remove voxels s32
         dec_s32 = self._pruning_layer(dec_s32, keep_s32)
 
@@ -263,13 +256,6 @@ class CompletionNet(nn.Module):
         dec_s16_cls = self.dec_s16_cls(dec_s16)
         keep_s16 = (dec_s16_cls.F > 0).squeeze()
 
-        # target = self.get_target(dec_s16, target_key)
-        # targets.append(target)
-        # out_cls.append(dec_s16_cls)
-
-        # if self.training:
-        #     keep_s16 += target
-
         # Remove voxels s16
         dec_s16 = self._pruning_layer(dec_s16, keep_s16)
 
@@ -283,13 +269,6 @@ class CompletionNet(nn.Module):
         dec_s8 = dec_s8 + enc_s8
         dec_s8_cls = self.dec_s8_cls(dec_s8)
         keep_s8 = (dec_s8_cls.F > 0).squeeze()
-
-        # target = self.get_target(dec_s8, target_key)
-        # targets.append(target)
-        # out_cls.append(dec_s8_cls)
-
-        # if self.training:
-        #     keep_s8 += target
 
         # Remove voxels s16
         dec_s8 = self._pruning_layer(dec_s8, keep_s8)
@@ -306,13 +285,6 @@ class CompletionNet(nn.Module):
         dec_s4_cls = self.dec_s4_cls(dec_s4)
         keep_s4 = (dec_s4_cls.F > 0).squeeze()
 
-        # target = self.get_target(dec_s4, target_key)
-        # targets.append(target)
-        # out_cls.append(dec_s4_cls)
-
-        # if self.training:
-        #     keep_s4 += target
-
         # Remove voxels s4
         dec_s4 = self._pruning_layer(dec_s4, keep_s4)
 
@@ -328,21 +300,12 @@ class CompletionNet(nn.Module):
         dec_s2_cls = self.dec_s2_cls(dec_s2)
         keep_s2 = (dec_s2_cls.F > 0).squeeze()
 
-        # target = self.get_target(dec_s2, target_key)
-        # targets.append(target)
-        # out_cls.append(dec_s2_cls)
-
-        # if self.training:
-        #     keep_s2 += target
-
         # Remove voxels s2
         dec_s2 = self._pruning_layer(dec_s2, keep_s2)
 
         ##################################################
         # Decoder 2 -> 1
         ##################################################
-        # print("dec_s2", dec_s2.shape)
-        # print()
         dec_s1 = self.dec_block_s2s1(dec_s2)
         # dec_s1_cls = self.dec_s1_cls(dec_s1)
 
@@ -351,14 +314,6 @@ class CompletionNet(nn.Module):
 
         dec_s1_cls = self.dec_s1_cls(dec_s1)
         keep_s1 = (dec_s1_cls.F > 0).squeeze()
-
-        # target = self.get_target(dec_s1, target_key)
-        # targets.append(target)
-        # out_cls.append(dec_s1_cls)
-
-        # Last layer does not require adding the target
-        # if self.training:
-        #     keep_s1 += target
 
         dec_s1_cls = self._pruning_layer(dec_s1_cls, keep_s1)
         dec_s1_cls = self._final_pruning_layer(dec_s1_cls)
