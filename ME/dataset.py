@@ -221,11 +221,11 @@ class LarndDataset(torch.utils.data.Dataset):
         target_feats = target_feats[:, :self.n_feats_out]
 
         signal_mask_active_feats = torch.zeros(
-            (signal_mask_active_coords.shape[0], self.n_feats_in + 1), dtype=float
+            (signal_mask_active_coords.shape[0], self.n_feats_in + 1), dtype=torch.float
         )
 
         signal_mask_gap_feats = torch.zeros(
-            (signal_mask_gap_coords.shape[0], self.n_feats_in + 1), dtype=float
+            (signal_mask_gap_coords.shape[0], self.n_feats_in + 1), dtype=torch.float
         )
         signal_mask_gap_feats[:, -1] = 1
 
