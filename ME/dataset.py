@@ -1,4 +1,4 @@
-import os, math, time
+import os, time
 from enum import Enum
 
 import numpy as np
@@ -24,6 +24,7 @@ class LarndDataset(torch.utils.data.Dataset):
 
         self.mask_type = mask_type
 
+        self.n_feats_in = n_feats_in
         # Assuming the first n features are the target features
         self.n_feats_out = n_feats_out
 
@@ -138,8 +139,7 @@ class LarndDataset(torch.utils.data.Dataset):
 
         # Normalise to [0,1]
         unmasked_feats *= self.feat_scalefactors
-        if masked_feats.size:
-            masked_feats *= self.feat_scalefactors
+        masked_feats *= self.feat_scalefactors
 
         if self.mask_type == MaskType.LOSS_ONLY:
             ret = self._getitem_mask_loss_only(
@@ -214,22 +214,6 @@ class LarndDataset(torch.utils.data.Dataset):
             { tuple(coord) for coord in unmasked_coords },
             { tuple(coord) for coord in masked_coords }
         )
-
-        print(signal_mask_active.shape)
-        print(signal_mask_gap_input.shape)
-        print(signal_mask_gap_target.shape)
-
-        # Possible to have no reflections into gaps, add a token gap signal mask so the below
-        # code still works
-        if not signal_mask_gap_target.size:
-            token_gap = [
-                np.random.choice(x_gaps),
-                np.random.randint(0, self.max_y_voxel),
-                np.random.randint(0, self.max_z_voxel)
-            ]
-            signal_mask_gap_target = np.array(token_gap)
-            if not signal_mask_gap_input.size:
-                signal_mask_gap_input = np.array(token_gap)
 
         input_coords = np.concatenate((unmasked_coords, signal_mask_active, signal_mask_gap_input))
         input_feats = np.concatenate(
@@ -329,8 +313,7 @@ class LarndDataset(torch.utils.data.Dataset):
 
         return x_gaps, z_gaps
 
-    @staticmethod
-    def _apply_mask(coordsxyz_feats, x_gaps, z_gaps):
+    def _apply_mask(self, coordsxyz_feats, x_gaps, z_gaps):
         x_gaps, z_gaps = set(x_gaps), set(z_gaps)
 
         masked_coords, masked_feats = [], []
@@ -346,10 +329,12 @@ class LarndDataset(torch.utils.data.Dataset):
                         unmasked_coords.append([coord_x, coord_y, coord_z])
                         unmasked_feats.append(feats)
 
-        return (
-            np.array(unmasked_coords, dtype=int), np.array(unmasked_feats, dtype=float),
-            np.array(masked_coords, dtype=int), np.array(masked_feats, dtype=float)
-        )
+        masked_coords = self._list2array(masked_coords, int)
+        masked_feats = self._list2array(masked_feats, float, coords=False)
+        unmasked_coords = self._list2array(unmasked_coords, int)
+        unmasked_feats = self._list2array(unmasked_feats, float, coords=False)
+
+        return unmasked_coords, unmasked_feats, masked_coords, masked_feats
 
     @staticmethod
     def _get_gap_reflect_coords(gaps):
@@ -527,19 +512,30 @@ class LarndDataset(torch.utils.data.Dataset):
                                     if coord not in unmasked_coords_set:
                                         signal_mask_active.add(coord)
 
-        signal_mask_active = np.array([ list(coord) for coord in signal_mask_active ])
-        signal_mask_gap_input = np.array([ list(coord) for coord in signal_mask_gap_input ])
-        signal_mask_gap_target = np.array([ list(coord) for coord in signal_mask_gap_target ])
+        signal_mask_active = self._list2array(
+            [ list(coord) for coord in signal_mask_active ], int
+        )
+        signal_mask_gap_input = self._list2array(
+            [ list(coord) for coord in signal_mask_gap_input ], int
+        )
+        signal_mask_gap_target = self._list2array(
+            [ list(coord) for coord in signal_mask_gap_target ], int
+        )
 
         return signal_mask_active, signal_mask_gap_input, signal_mask_gap_target
+
+    def _list2array(self, l, dtype, coords=True):
+        return (
+            np.array(l, dtype=dtype)
+            if l else
+            np.empty((0, 3) if coords else (0, self.n_feats_in), dtype=dtype)
+        )
 
     """ End __getitem__ helpers """
 
 
 class CollateCOO:
-    def __init__(self, device):
-        self.device = device
-
+    def __init__(self):
         self.required_keys = set(["input_coords", "input_feats", "target_coords", "target_feats"])
 
     def __call__(self, list_coo):
@@ -586,10 +582,9 @@ if __name__ == "__main__":
         data_path, MaskType.REFLECTION, vmap, 2, 1, [1 / 300, 1 / 5], max_dataset_size=200, seed=1
     )
 
-    device = torch.device("cuda:0")
     b_size = 1
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=b_size, collate_fn=CollateCOO(device), num_workers=0
+        dataset, batch_size=b_size, collate_fn=CollateCOO(), num_workers=0
     )
 
     dataloader_itr = iter(dataloader)
