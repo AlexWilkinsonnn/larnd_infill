@@ -206,88 +206,40 @@ class LarndDataset(torch.utils.data.Dataset):
         )
 
         # Smear signal mask in all directions
-        signal_mask_active, signal_mask_gap_input, signal_mask_gap_target = self._make_signal_mask(
-            coordsxyz_feats,
-            infill_coords,
-            (-2, 3), (-2, 3), (-5, 6),
-            x_gaps_set, z_gaps_set,
-            { tuple(coord) for coord in unmasked_coords },
-            { tuple(coord) for coord in masked_coords }
+        signal_mask_active_coords, signal_mask_gap_coords = self._make_signal_mask(
+            coordsxyz_feats, infill_coords, (-2, 3), (-2, 3), (-5, 6), x_gaps_set, z_gaps_set
         )
 
-        input_coords = np.concatenate((unmasked_coords, signal_mask_active, signal_mask_gap_input))
+        input_coords = unmasked_coords
+        # Last entry of feat vec indicates whether coordinate is at gap or not
         input_feats = np.concatenate(
-            (
-                np.concatenate((unmasked_feats, np.zeros((unmasked_feats.shape[0], 1))), axis=1),
-                np.zeros((signal_mask_active.shape[0] + signal_mask_gap_input.shape[0], 3))
-            )
+            (unmasked_feats, np.zeros((unmasked_coords.shape[0], 1))), axis=1
         )
-        input_feats[-signal_mask_gap_input.shape[0]:, 2] = 1
 
-        target_coords = np.concatenate(
-            (unmasked_coords, masked_coords, signal_mask_active, signal_mask_gap_target)
-        )
+        target_coords = np.concatenate((unmasked_coords, masked_coords))
         target_feats = np.concatenate((unmasked_feats, masked_feats))
         target_feats = target_feats[:, :self.n_feats_out]
-        target_feats = np.concatenate(
-            (
-                target_feats,
-                np.zeros(
-                    (
-                        signal_mask_active.shape[0] + signal_mask_gap_target.shape[0],
-                        self.n_feats_out
-                    )
-                )
-            )
+
+        signal_mask_active_feats = torch.zeros(
+            (signal_mask_active_coords.shape[0], self.n_feats_in + 1), dtype=float
         )
+
+        signal_mask_gap_feats = torch.zeros(
+            (signal_mask_gap_coords.shape[0], self.n_feats_in + 1), dtype=float
+        )
+        signal_mask_gap_feats[:, -1] = 1
 
         return {
             "input_coords" : torch.IntTensor(input_coords),
             "input_feats" : torch.FloatTensor(input_feats),
             "target_coords" : torch.IntTensor(target_coords),
             "target_feats" : torch.FloatTensor(target_feats),
+            "signal_mask_active_coords" : torch.IntTensor(signal_mask_active_coords),
+            "signal_mask_active_feats" : signal_mask_active_feats,
+            "signal_mask_gap_coords" : torch.IntTensor(signal_mask_gap_coords),
+            "signal_mask_gap_feats" : signal_mask_gap_feats,
             "mask_x" : x_gaps, "mask_z" : z_gaps
         }
-
-#         input_coords, input_feats = [], []
-#         target_coords, target_feats = [], []
-#         for coord, feats in zip(unmasked_coords, unmasked_feats):
-#             input_coords.append(coord)
-#             input_feats.append(feats + [0])
-
-#             target_coords.append(coord)
-#             target_feats.append(feats[0:self.n_feats_out])
-
-#             signal_mask.remove(tuple(coord))
-
-#         masked_coords_set = set()
-#         for coord, feats in zip(masked_coords, masked_feats):
-#             target_coords.append(coord)
-#             target_feats.append(feats[0:self.n_feats_out])
-
-#             masked_coords_set.add(tuple(coord))
-
-#         for coord in signal_mask:
-#             if coord not in masked_coords_set:
-#                 coord = list(coord)
-#                 target_coords.append(coord)
-#                 target_feats.append([0])
-#             else:
-#                 coord = list(coord)
-
-#             input_coords.append(coord)
-#             if coord[0] in x_gaps or coord[2] in z_gaps:
-#                 input_feats.append([0, 0, 1])
-#             else:
-#                 input_feats.append([0, 0, 0])
-
-#         return {
-#             "input_coords" : torch.IntTensor(input_coords),
-#             "input_feats" : torch.FloatTensor(input_feats),
-#             "target_coords" : torch.IntTensor(target_coords),
-#             "target_feats" : torch.FloatTensor(target_feats),
-#             "mask_x" : x_gaps, "mask_z" : z_gaps
-#         }
 
     def _generate_random_mask(self):
         x_gaps = (
@@ -462,34 +414,22 @@ class LarndDataset(torch.utils.data.Dataset):
                                     )
 
     def _make_signal_mask(
-        self,
-        coordsxyz_feats,
-        infill_coords,
-        x_smear, y_smear, z_smear,
-        x_gaps_set, z_gaps_set,
-        unmasked_coords_set, masked_coords_set
+        self, coordsxyz_feats, infill_coords, x_smear, y_smear, z_smear, x_gaps_set, z_gaps_set
     ):
-        signal_mask_active = set()
-        signal_mask_gap_input, signal_mask_gap_target = set(), set()
+        signal_mask_active, signal_mask_gap = set(), set()
+
+        # NOTE Repeated coordinates will get ignored when making the sparse tensor anyway
+        # but using sets here makes later operations faster
 
         for coords in infill_coords:
             for shift_x in range(*x_smear):
                 for shift_y in range(*y_smear):
                     for shift_z in range(*z_smear):
                         coord = (coords[0] + shift_x, coords[1] + shift_y, coords[2] + shift_z)
-                        if (
-                            coord[0] < 0 or coord[0] > self.max_x_voxel or
-                            coord[1] < 0 or coord[1] > self.max_y_voxel or
-                            coord[2] < 0 or coord[2] > self.max_z_voxel
-                        ):
-                            continue
                         if coord[0] in x_gaps_set or coord[2] in z_gaps_set:
-                            signal_mask_gap_input.add(coord)
-                            if coord not in masked_coords_set:
-                                signal_mask_gap_target.add(coord)
+                            signal_mask_gap.add(coord)
                         else:
-                            if coord not in unmasked_coords_set:
-                                signal_mask_active.add(coord)
+                            signal_mask_active.add(coord)
 
         for coord_x, coordsyz_feats in coordsxyz_feats.items():
             for coord_y, coordsz_feats in coordsyz_feats.items():
@@ -498,31 +438,37 @@ class LarndDataset(torch.utils.data.Dataset):
                         for shift_y in range(*y_smear):
                             for shift_z in range(*z_smear):
                                 coord = (coord_x + shift_x, coord_y + shift_y, coord_z + shift_z)
-                                if (
-                                    coord[0] < 0 or coord[0] > self.max_x_voxel or
-                                    coord[1] < 0 or coord[1] > self.max_y_voxel or
-                                    coord[2] < 0 or coord[2] > self.max_z_voxel
-                                ):
-                                    continue
                                 if coord[0] in x_gaps_set or coord[2] in z_gaps_set:
-                                    signal_mask_gap_input.add(coord)
-                                    if coord not in masked_coords_set:
-                                        signal_mask_gap_target.add(coord)
+                                    signal_mask_gap.add(coord)
                                 else:
-                                    if coord not in unmasked_coords_set:
-                                        signal_mask_active.add(coord)
+                                    signal_mask_active.add(coord)
 
         signal_mask_active = self._list2array(
-            [ list(coord) for coord in signal_mask_active ], int
+            [
+                list(coord)
+                for coord in signal_mask_active
+                if (
+                    coord[0] >= 0 and coord[0] <= self.max_x_voxel and
+                    coord[1] >= 0 and coord[1] <= self.max_y_voxel and
+                    coord[2] >= 0 and coord[2] <= self.max_z_voxel
+                )
+            ],
+            int
         )
-        signal_mask_gap_input = self._list2array(
-            [ list(coord) for coord in signal_mask_gap_input ], int
-        )
-        signal_mask_gap_target = self._list2array(
-            [ list(coord) for coord in signal_mask_gap_target ], int
+        signal_mask_gap = self._list2array(
+            [
+                list(coord)
+                for coord in signal_mask_gap
+                if (
+                    coord[0] >= 0 and coord[0] <= self.max_x_voxel and
+                    coord[1] >= 0 and coord[1] <= self.max_y_voxel and
+                    coord[2] >= 0 and coord[2] <= self.max_z_voxel
+                )
+            ],
+            int
         )
 
-        return signal_mask_active, signal_mask_gap_input, signal_mask_gap_target
+        return signal_mask_active, signal_mask_gap
 
     def _list2array(self, l, dtype, coords=True):
         return (
@@ -535,33 +481,28 @@ class LarndDataset(torch.utils.data.Dataset):
 
 
 class CollateCOO:
-    def __init__(self):
-        self.required_keys = set(["input_coords", "input_feats", "target_coords", "target_feats"])
+    def __init__(
+        self, coord_feat_pairs=(("input_coords", "input_feats"), ("target_coords", "target_feats"))
+    ):
+        self.coord_feat_pairs = coord_feat_pairs
+        self.required_keys = { key for keys in coord_feat_pairs for key in keys }
 
-    def __call__(self, list_coo):
-        list_input_coords = [ coo["input_coords"] for coo in list_coo ]
-        list_input_feats = [ coo["input_feats"] for coo in list_coo ]
-        list_target_coords = [ coo["target_coords"] for coo in list_coo ]
-        list_target_feats = [ coo["target_feats"] for coo in list_coo ]
+    def __call__(self, data_list):
+        ret = {}
 
-        input_coords, input_feats = ME.utils.sparse_collate(
-            coords=list_input_coords, feats=list_input_feats
-        )
-        # NOTE Doing the next step and making a SparseTensor here causes problems when using
-        # num_workers in DataLoader since subprocess needs tries to pickle the SparseTensor which
-        # is not possible
+        # Make batch list into a single tensor with a batch index in the coordinates
+        for coords_key, feats_key in self.coord_feat_pairs:
+            coords_list = [ data[coords_key] for data in data_list ]
+            feats_list = [ data[feats_key] for data in data_list ]
+            ret[coords_key], ret[feats_key] = ME.utils.sparse_collate(
+                coords=coords_list, feats=feats_list
+            )
+            # NOTE Doing the next step and making a SparseTensor here causes problems when using
+            # num_workers in DataLoader since subprocess needs tries to pickle the SparseTensor
+            # which is not possible
 
-        target_coords, target_feats = ME.utils.sparse_collate(
-            coords=list_target_coords, feats=list_target_feats
-        )
-
-        ret = {
-            "input_coords" : input_coords, "input_feats" : input_feats,
-            "target_coords" : target_coords, "target_feats" : target_feats
-        }
-
-        for extra_key in set(list_coo[0].keys()) - self.required_keys:
-            ret[extra_key] = [ coo[extra_key] for coo in list_coo ]
+        for extra_key in set(data_list[0].keys()) - self.required_keys:
+            ret[extra_key] = [ coo[extra_key] for coo in data_list ]
 
         return ret
 
@@ -582,9 +523,17 @@ if __name__ == "__main__":
         data_path, MaskType.REFLECTION, vmap, 2, 1, [1 / 300, 1 / 5], max_dataset_size=200, seed=1
     )
 
+    collate_fn = CollateCOO(
+        coord_feat_pairs=(
+            ("input_coords", "input_feats"), ("target_coords", "target_feats"),
+            ("signal_mask_active_coords", "signal_mask_active_feats"),
+            ("signal_mask_gap_coords", "signal_mask_gap_feats")
+        )
+    )
+
     b_size = 1
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=b_size, collate_fn=CollateCOO(), num_workers=0
+        dataset, batch_size=b_size, collate_fn=collate_fn, num_workers=0
     )
 
     dataloader_itr = iter(dataloader)
@@ -601,8 +550,10 @@ if __name__ == "__main__":
         torch.unique(batch["input_coords"], dim=0).shape,
         torch.unique(batch["target_coords"], dim=0).shape
     )
-
-    # import sys; sys.exit()
+    print(batch["signal_mask_active_feats"])
+    print(batch["signal_mask_gap_feats"])
+    print(batch["signal_mask_active_coords"].shape, batch["signal_mask_active_feats"].shape)
+    print(batch["signal_mask_gap_coords"].shape, batch["signal_mask_gap_feats"].shape)
 
     from larpixsoft.detector import set_detector_properties
     det_props = "/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
@@ -610,6 +561,18 @@ if __name__ == "__main__":
         "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
     )
     detector = set_detector_properties(det_props, pixel_layout, pedestal=74)
+
+    coords_packed_sigmask_active = [[], [], []]
+    for coord in batch["signal_mask_active_coords"]:
+        coords_packed_sigmask_active[0].append(coord[1].item())
+        coords_packed_sigmask_active[1].append(coord[2].item())
+        coords_packed_sigmask_active[2].append(coord[3].item())
+    coords_packed_sigmask_gap = [[], [], []]
+    for coord in batch["signal_mask_gap_coords"]:
+        coords_packed_sigmask_gap[0].append(coord[1].item())
+        coords_packed_sigmask_gap[1].append(coord[2].item())
+        coords_packed_sigmask_gap[2].append(coord[3].item())
+
     coords_packed = [[], [], []]
     for coord in batch["input_coords"]:
         coords_packed[0].append(coord[1].item())
@@ -625,8 +588,11 @@ if __name__ == "__main__":
                 os.path.basename(".".join(batch["data_path"][0].split(".")[:-1]))
             )
         ),
-        signal_mask=True, max_feat=1
+        signal_mask_gap_coords=coords_packed_sigmask_gap,
+        signal_mask_active_coords=coords_packed_sigmask_active,
+        max_feat=1
     )
+
     coords_packed = [[], [], []]
     for coord in batch["target_coords"]:
         coords_packed[0].append(coord[1].item())
@@ -642,6 +608,8 @@ if __name__ == "__main__":
                 os.path.basename(".".join(batch["data_path"][0].split(".")[:-1]))
             )
         ),
-        signal_mask=True, max_feat=1
+        signal_mask_gap_coords=coords_packed_sigmask_gap,
+        signal_mask_active_coords=coords_packed_sigmask_active,
+        max_feat=1
     )
 

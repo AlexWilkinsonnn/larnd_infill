@@ -303,7 +303,8 @@ def plot_ndlar_voxels(
 
 def plot_ndlar_voxels_2(
     coords, feats, detector, x_vmap, y_vmap, z_vmap, x_gaps, z_gaps,
-    z_scalefactor=1, max_feat=300, tracks=None, saveas=None, signal_mask=False
+    z_scalefactor=1, max_feat=300, saveas=None,
+    tracks=None, signal_mask_active_coords=None, signal_mask_gap_coords=None
 ):
     norm_feats = matplotlib.colors.Normalize(vmin=0, vmax=max_feat)
     m_feats = matplotlib.cm.ScalarMappable(norm=norm_feats, cmap=matplotlib.cm.jet)
@@ -340,11 +341,6 @@ def plot_ndlar_voxels_2(
 
     curr_patches_xy, curr_patches_xz, curr_patches_zy = set(), set(), set()
     for coord_x, coord_y, coord_z, feat in zip(*coords, feats):
-        # If we are plotting the signal mask want to have the packets on top. So let the packets
-        # occupy positions in curr_patches first.
-        if signal_mask and not feat:
-            continue
-
         x_bin = x_vmap[coord_x]
         x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
         y_bin = y_vmap[coord_y]
@@ -375,11 +371,8 @@ def plot_ndlar_voxels_2(
             )
 
     # Now draw the signal mask patches
-    if signal_mask:
-        for coord_x, coord_y, coord_z, feat in zip(*coords, feats):
-            if feat:
-                continue
-
+    if signal_mask_active_coords is not None:
+        for coord_x, coord_y, coord_z in zip(*signal_mask_active_coords):
             x_bin = x_vmap[coord_x]
             x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
             y_bin = y_vmap[coord_y]
@@ -388,6 +381,37 @@ def plot_ndlar_voxels_2(
             z_size, z_pos = (z_bin[1] - z_bin[0]) * z_scalefactor, z_bin[0]
 
             c = "green"
+            alpha = 0.5
+
+            pos_xy = (x_pos, y_pos)
+            if pos_xy not in curr_patches_xy:
+                curr_patches_xy.add(pos_xy)
+                ax[0].add_patch(
+                    matplotlib.patches.Rectangle(pos_xy, x_size, y_size, fc=c, alpha=alpha)
+                )
+            pos_xz = (x_pos, z_pos)
+            if pos_xz not in curr_patches_xz:
+                curr_patches_xz.add(pos_xz)
+                ax[1].add_patch(
+                    matplotlib.patches.Rectangle(pos_xz, x_size, z_size, fc=c, alpha=alpha)
+                )
+            pos_zy = (z_pos, y_pos)
+            if pos_zy not in curr_patches_zy:
+                curr_patches_zy.add(pos_zy)
+                ax[2].add_patch(
+                    matplotlib.patches.Rectangle(pos_zy, z_size, y_size, fc=c, alpha=alpha)
+                )
+
+    if signal_mask_gap_coords is not None:
+        for coord_x, coord_y, coord_z in zip(*signal_mask_gap_coords):
+            x_bin = x_vmap[coord_x]
+            x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
+            y_bin = y_vmap[coord_y]
+            y_size, y_pos = y_bin[1] - y_bin[0], y_bin[0]
+            z_bin = z_vmap[coord_z]
+            z_size, z_pos = (z_bin[1] - z_bin[0]) * z_scalefactor, z_bin[0]
+
+            c = "red"
             alpha = 0.5
 
             pos_xy = (x_pos, y_pos)
