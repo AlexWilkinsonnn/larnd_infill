@@ -7,10 +7,13 @@ class CompletionNet(nn.Module):
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
     DEC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
 
-    def __init__(self, pointcloud_size, in_nchannel=1, out_nchannel=1):
+    def __init__(
+        self, pointcloud_size, in_nchannel=1, out_nchannel=1, final_pruning_threshold=None
+    ):
         nn.Module.__init__(self)
 
         self.pointcloud_size = pointcloud_size
+        self.final_pruning_threshold = final_pruning_threshold
 
         # Input sparse tensor must have tensor stride 128.
         enc_ch = self.ENC_CHANNELS
@@ -186,11 +189,13 @@ class CompletionNet(nn.Module):
             (t.C[:, 2] < self.pointcloud_size[1]) *
             (t.C[:, 3] < self.pointcloud_size[2])
         )
-        print(keep)
-        print(keep.squeeze())
+        if self.final_pruning_threshold is not None:
+            keep = keep + (t.F[:, 0] > self.final_pruning_threshold)
 
-        if keep.sum().item() == 0 or keep.shape[0] == 1:
-            print("keep.sum().item() == 0 in final pruning layer")
+        keep = keep.squeeze()
+
+        if not keep.shape and keep.item() or keep.sum().item() == 0:
+            # print("keep.sum().item() == 0 in final pruning layer")
             return t
 
         try:
@@ -398,7 +403,7 @@ class CompletionNetSigMask(nn.Module):
 
         # Decoder
         self.dec_block_s64s32 = nn.Sequential(
-            ME.MinkowskiGenerativeConvolutionTranspose(
+            ME.MinkowskiConvolutionTranspose(
                 enc_ch[6], dec_ch[5], kernel_size=4, stride=2, dimension=3,
             ),
             ME.MinkowskiBatchNorm(dec_ch[5]),
@@ -413,7 +418,7 @@ class CompletionNetSigMask(nn.Module):
         )
 
         self.dec_block_s32s16 = nn.Sequential(
-            ME.MinkowskiGenerativeConvolutionTranspose(
+            ME.MinkowskiConvolutionTranspose(
                 enc_ch[5], dec_ch[4], kernel_size=2, stride=2, dimension=3,
             ),
             ME.MinkowskiBatchNorm(dec_ch[4]),
@@ -428,7 +433,7 @@ class CompletionNetSigMask(nn.Module):
         )
 
         self.dec_block_s16s8 = nn.Sequential(
-            ME.MinkowskiGenerativeConvolutionTranspose(
+            ME.MinkowskiConvolutionTranspose(
                 dec_ch[4], dec_ch[3], kernel_size=2, stride=2, dimension=3,
             ),
             ME.MinkowskiBatchNorm(dec_ch[3]),
@@ -443,7 +448,7 @@ class CompletionNetSigMask(nn.Module):
         )
 
         self.dec_block_s8s4 = nn.Sequential(
-            ME.MinkowskiGenerativeConvolutionTranspose(
+            ME.MinkowskiConvolutionTranspose(
                 dec_ch[3], dec_ch[2], kernel_size=2, stride=2, dimension=3,
             ),
             ME.MinkowskiBatchNorm(dec_ch[2]),
@@ -458,7 +463,7 @@ class CompletionNetSigMask(nn.Module):
         )
 
         self.dec_block_s4s2 = nn.Sequential(
-            ME.MinkowskiGenerativeConvolutionTranspose(
+            ME.MinkowskiConvolutionTranspose(
                 dec_ch[2], dec_ch[1], kernel_size=2, stride=2, dimension=3,
             ),
             ME.MinkowskiBatchNorm(dec_ch[1]),
@@ -473,7 +478,7 @@ class CompletionNetSigMask(nn.Module):
         )
 
         self.dec_block_s2s1 = nn.Sequential(
-            ME.MinkowskiGenerativeConvolutionTranspose(
+            ME.MinkowskiConvolutionTranspose(
                 dec_ch[1], dec_ch[0], kernel_size=2, stride=2, dimension=3,
             ),
             ME.MinkowskiBatchNorm(dec_ch[0]),
@@ -505,10 +510,10 @@ class CompletionNetSigMask(nn.Module):
             (t.C[:, 2] < self.pointcloud_size[1]) *
             (t.C[:, 3] < self.pointcloud_size[2])
         )
-        keep = keep
+        keep = keep.squeeze()
         
         try:
-            if keep.sum().item() == 0 or keep.shape[0] == 1:
+            if not keep.shape and keep.item() or keep.sum().item() == 0:
                 # print("keep.sum().item() == 0 in final pruning layer")
                 return t
         except:
@@ -581,6 +586,7 @@ class CompletionNetSigMask(nn.Module):
         ##################################################
         # Decoder 32 -> 16
         ##################################################
+        # dec_s16 = self.dec_block_s32s16(enc_s32)
         dec_s16 = self.dec_block_s32s16(dec_s32)
 
         # Add encoder features
