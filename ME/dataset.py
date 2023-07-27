@@ -2,8 +2,8 @@ import os, time
 from enum import Enum
 
 import numpy as np
-import sparse, yaml
 from tqdm import tqdm
+import sparse, yaml
 
 import torch
 import MinkowskiEngine as ME
@@ -14,15 +14,14 @@ from aux import plot_ndlar_voxels_2
 class LarndDataset(torch.utils.data.Dataset):
     """Dataset for reading sparse volexised larnd-sim data and preparing an infill mask"""
     def __init__(
-        self, dataroot, mask_type, vmap, n_feats_in, n_feats_out, feat_scalefactors,
+        self, dataroot, prep_type, vmap, n_feats_in, n_feats_out, feat_scalefactors,
         x_true_gap_padding=None, z_true_gap_padding=None,
         valid=False, max_dataset_size=0, seed=None
-
     ):
         if seed is not None:
             np.random.seed(seed)
 
-        self.mask_type = mask_type
+        self.prep_type = prep_type
 
         self.n_feats_in = n_feats_in
         # Assuming the first n features are the target features
@@ -51,6 +50,7 @@ class LarndDataset(torch.utils.data.Dataset):
             self.z_gap_size if z_true_gap_padding is None else z_true_gap_padding
         )
 
+        # NOTE mutliprocessing does not speed up this loop
         # data_dir = os.path.join(dataroot, "valid" if valid else "train")
         data_dir = dataroot
         self.data = []
@@ -72,7 +72,7 @@ class LarndDataset(torch.utils.data.Dataset):
             # [x][y][z] = [feat_1, feat_2]
             self.data[-1]["xyz"] = self._coo2nested(coo, 0, 1, 2, n_feats_in)
 
-            if mask_type == MaskType.REFLECTION:
+            if prep_type == DataPrepType.REFLECTION:
                 self.data[-1]["zxy"] = self._coo2nested(coo, 2, 0, 1, n_feats_in)
 
     """ __init__ helpers """
@@ -85,7 +85,7 @@ class LarndDataset(torch.utils.data.Dataset):
         gap_sizes[0] += 1
 
         assertion = np.unique(gap_sizes).size == 1
-        assert assertion, "Expected equal x gap sizes: {}, {}".format(gap_sizes, gaps)
+        assert assertion, "Expected equal gap sizes: {}, {}".format(gap_sizes, gaps)
 
         return gap_sizes[0]
 
@@ -99,7 +99,7 @@ class LarndDataset(torch.utils.data.Dataset):
         gap_spacings.append(n_voxels - (gaps[-1] + 1))
 
         assertion = np.unique(gap_spacings).size == 1
-        assert assertion, "Expected equal x gap spacings: {}, {}".format(gap_spacings, gaps)
+        assert assertion, "Expected equal gap spacings: {}, {}".format(gap_spacings, gaps)
 
         return gap_spacings[0]
 
@@ -141,13 +141,18 @@ class LarndDataset(torch.utils.data.Dataset):
         unmasked_feats *= self.feat_scalefactors
         masked_feats *= self.feat_scalefactors
 
-        if self.mask_type == MaskType.LOSS_ONLY:
-            ret = self._getitem_mask_loss_only(
+        if self.prep_type == DataPrepType.STANDARD:
+            ret = self._getitem_standard(
                 unmasked_coords, unmasked_feats, masked_coords, masked_feats, x_gaps, z_gaps
             )
-        elif self.mask_type == MaskType.REFLECTION:
-            ret = self._getitem_mask_reflection(
+        elif self.prep_type == DataPrepType.REFLECTION:
+            ret = self._getitem_reflection(
                 data["xyz"], data["zxy"],
+                unmasked_coords, unmasked_feats, masked_coords, masked_feats, x_gaps, z_gaps
+            )
+
+        elif self.prep_type == DataPrepType.GAP_DISTANCE:
+            ret = self._getitem_gap_distance(
                 unmasked_coords, unmasked_feats, masked_coords, masked_feats, x_gaps, z_gaps
             )
 
@@ -157,7 +162,7 @@ class LarndDataset(torch.utils.data.Dataset):
 
     """ __getitem__ helpers """
 
-    def _getitem_mask_loss_only(
+    def _getitem_standard(
         self, unmasked_coords, unmasked_feats, masked_coords, masked_feats, x_gaps, z_gaps
     ):
         input_coords = unmasked_coords
@@ -176,7 +181,66 @@ class LarndDataset(torch.utils.data.Dataset):
             "mask_z" : z_gaps
         }
 
-    def _getitem_mask_reflection(
+    def _getitem_gap_distance(
+        self, unmasked_coords, unmasked_feats, masked_coords, masked_feats, x_gaps, z_gaps
+    ):
+        gap_distances_feats = np.zeros((unmasked_feats.shape[0], 2))
+
+        gap_distances_feats[:, 0] = self._calc_gap_distance_feats(
+            x_gaps, self.x_true_gaps, self.x_gap_spacing, unmasked_coords, 0
+        )
+        gap_distances_feats[:, 1] = self._calc_gap_distance_feats(
+            z_gaps, self.z_true_gaps, self.z_gap_spacing, unmasked_coords, 2
+        )
+
+        input_coords = unmasked_coords
+        input_feats = np.concatenate((unmasked_feats, gap_distances_feats), axis=1)
+
+        target_coords = np.concatenate((unmasked_coords, masked_coords))
+        target_feats = np.concatenate((unmasked_feats, masked_feats))
+        target_feats = target_feats[:, :self.n_feats_out]
+
+        return {
+            "input_coords" : torch.IntTensor(input_coords),
+            "input_feats" : torch.FloatTensor(input_feats),
+            "target_coords" : torch.IntTensor(target_coords),
+            "target_feats" : torch.FloatTensor(target_feats),
+            "mask_x" : { gap for gap in x_gaps },
+            "mask_z" : { gap for gap in z_gaps }
+        }
+
+    @staticmethod
+    def _calc_gap_distance_feats(gaps, true_gaps, gap_spacing, unmasked_coords, coord_idx):
+        gap_distances = np.zeros(unmasked_coords.shape[0])
+
+        gap_borders = np.concatenate(
+            tuple(
+                chunk[::chunk.size-1]
+                for chunk in np.split(gaps, np.where(np.diff(gaps) != 1)[0] + 1)
+            )
+        )
+        gap_shift_from_true = gaps[0] - true_gaps[0]
+        gap_starts = np.concatenate(([gap_shift_from_true - 1], gap_borders[1::2]))
+
+        centre_offset = np.ceil(gap_spacing / 2)
+        active_centres = gap_starts + centre_offset
+        if not gap_spacing % 2: # Middle voxel is not unique so use both
+            active_centres = np.concatenate((active_centres, gap_starts + centre_offset + 1))
+
+        # Find the smallest distance from any of the possible centres
+        dists_from_centre = unmasked_coords[:, [coord_idx]] - active_centres
+        gap_distances = dists_from_centre[
+            np.arange(unmasked_coords.shape[0]), np.abs(dists_from_centre).argmin(axis=1)
+        ]
+        gap_distances /= (centre_offset - 1) # Normalise to [-1, 1]
+
+        # Distinguish between edges of detector and gaps
+        gap_distances[unmasked_coords[:, coord_idx] < np.min(active_centres)] = 0.0
+        gap_distances[unmasked_coords[:, coord_idx] > np.max(active_centres)] = 0.0
+
+        return gap_distances
+
+    def _getitem_reflection(
         self, coordsxyz_feats, coordszxy_feats,
         unmasked_coords, unmasked_feats, masked_coords, masked_feats,
         x_gaps, z_gaps
@@ -507,9 +571,10 @@ class CollateCOO:
         return ret
 
 
-class MaskType(Enum):
-    LOSS_ONLY = 1
+class DataPrepType(Enum):
+    STANDARD = 1
     REFLECTION = 2
+    GAP_DISTANCE = 3
 
 
 # Testing
@@ -520,15 +585,18 @@ if __name__ == "__main__":
         vmap = yaml.load(f, Loader=yaml.FullLoader)
 
     dataset = LarndDataset(
-        data_path, MaskType.REFLECTION, vmap, 2, 1, [1 / 300, 1 / 5], max_dataset_size=200, seed=1
+        data_path, DataPrepType.GAP_DISTANCE, vmap, 2, 1, [1 / 300, 1 / 5], max_dataset_size=200, seed=1
     )
 
+    # collate_fn = CollateCOO(
+    #     coord_feat_pairs=(
+    #         ("input_coords", "input_feats"), ("target_coords", "target_feats"),
+    #         ("signal_mask_active_coords", "signal_mask_active_feats"),
+    #         ("signal_mask_gap_coords", "signal_mask_gap_feats")
+    #     )
+    # )
     collate_fn = CollateCOO(
-        coord_feat_pairs=(
-            ("input_coords", "input_feats"), ("target_coords", "target_feats"),
-            ("signal_mask_active_coords", "signal_mask_active_feats"),
-            ("signal_mask_gap_coords", "signal_mask_gap_feats")
-        )
+        coord_feat_pairs=(("input_coords", "input_feats"), ("target_coords", "target_feats"))
     )
 
     b_size = 1
@@ -538,7 +606,7 @@ if __name__ == "__main__":
 
     dataloader_itr = iter(dataloader)
     s = time.time()
-    num_iters = 3
+    num_iters = 20
     for i in range(num_iters):
         batch = next(dataloader_itr)
     e = time.time()
@@ -550,10 +618,10 @@ if __name__ == "__main__":
         torch.unique(batch["input_coords"], dim=0).shape,
         torch.unique(batch["target_coords"], dim=0).shape
     )
-    print(batch["signal_mask_active_feats"])
-    print(batch["signal_mask_gap_feats"])
-    print(batch["signal_mask_active_coords"].shape, batch["signal_mask_active_feats"].shape)
-    print(batch["signal_mask_gap_coords"].shape, batch["signal_mask_gap_feats"].shape)
+    # print(batch["signal_mask_active_feats"])
+    # print(batch["signal_mask_gap_feats"])
+    # print(batch["signal_mask_active_coords"].shape, batch["signal_mask_active_feats"].shape)
+    # print(batch["signal_mask_gap_coords"].shape, batch["signal_mask_gap_feats"].shape)
 
     from larpixsoft.detector import set_detector_properties
     det_props = "/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
@@ -562,54 +630,79 @@ if __name__ == "__main__":
     )
     detector = set_detector_properties(det_props, pixel_layout, pedestal=74)
 
-    coords_packed_sigmask_active = [[], [], []]
-    for coord in batch["signal_mask_active_coords"]:
-        coords_packed_sigmask_active[0].append(coord[1].item())
-        coords_packed_sigmask_active[1].append(coord[2].item())
-        coords_packed_sigmask_active[2].append(coord[3].item())
-    coords_packed_sigmask_gap = [[], [], []]
-    for coord in batch["signal_mask_gap_coords"]:
-        coords_packed_sigmask_gap[0].append(coord[1].item())
-        coords_packed_sigmask_gap[1].append(coord[2].item())
-        coords_packed_sigmask_gap[2].append(coord[3].item())
+    # coords_packed_sigmask_active = [[], [], []]
+    # for coord in batch["signal_mask_active_coords"]:
+    #     coords_packed_sigmask_active[0].append(coord[1].item())
+    #     coords_packed_sigmask_active[1].append(coord[2].item())
+    #     coords_packed_sigmask_active[2].append(coord[3].item())
+    # coords_packed_sigmask_gap = [[], [], []]
+    # for coord in batch["signal_mask_gap_coords"]:
+    #     coords_packed_sigmask_gap[0].append(coord[1].item())
+    #     coords_packed_sigmask_gap[1].append(coord[2].item())
+    #     coords_packed_sigmask_gap[2].append(coord[3].item())
 
     coords_packed = [[], [], []]
     for coord in batch["input_coords"]:
         coords_packed[0].append(coord[1].item())
         coords_packed[1].append(coord[2].item())
         coords_packed[2].append(coord[3].item())
+
+    # plot_ndlar_voxels_2(
+    #     coords_packed, [ feats[0].item() for feats in batch["input_feats"] ],
+    #     detector,
+    #     vmap["x"], vmap["y"], vmap["z"],
+    #     batch["mask_x"][0], batch["mask_z"][0],
+    #     saveas=(
+    #         "/home/awilkins/larnd_infill/larnd_infill/tests/input_sigmask_example_{}.pdf".format(
+    #             os.path.basename(".".join(batch["data_path"][0].split(".")[:-1]))
+    #         )
+    #     ),
+    #     signal_mask_gap_coords=coords_packed_sigmask_gap,
+    #     signal_mask_active_coords=coords_packed_sigmask_active,
+    #     max_feat=1
+    # )
     plot_ndlar_voxels_2(
-        coords_packed, [ feats[0].item() for feats in batch["input_feats"] ],
+        coords_packed, [ feats[2].item() for feats in batch["input_feats"] ],
         detector,
         vmap["x"], vmap["y"], vmap["z"],
         batch["mask_x"][0], batch["mask_z"][0],
         saveas=(
-            "/home/awilkins/larnd_infill/larnd_infill/tests/input_sigmask_example_{}.pdf".format(
+            "/home/awilkins/larnd_infill/larnd_infill/tests/input_xdistance_example{}.pdf".format(
                 os.path.basename(".".join(batch["data_path"][0].split(".")[:-1]))
             )
         ),
-        signal_mask_gap_coords=coords_packed_sigmask_gap,
-        signal_mask_active_coords=coords_packed_sigmask_active,
-        max_feat=1
+        max_feat=1, min_feat=-1
+    )
+    plot_ndlar_voxels_2(
+        coords_packed, [ feats[3].item() for feats in batch["input_feats"] ],
+        detector,
+        vmap["x"], vmap["y"], vmap["z"],
+        batch["mask_x"][0], batch["mask_z"][0],
+        saveas=(
+            "/home/awilkins/larnd_infill/larnd_infill/tests/input_zdistance_example{}.pdf".format(
+                os.path.basename(".".join(batch["data_path"][0].split(".")[:-1]))
+            )
+        ),
+        max_feat=1, min_feat=-1
     )
 
-    coords_packed = [[], [], []]
-    for coord in batch["target_coords"]:
-        coords_packed[0].append(coord[1].item())
-        coords_packed[1].append(coord[2].item())
-        coords_packed[2].append(coord[3].item())
-    plot_ndlar_voxels_2(
-        coords_packed, [ feats[0].item() for feats in batch["target_feats"] ],
-        detector,
-        vmap["x"], vmap["y"], vmap["z"],
-        batch["mask_x"][0], batch["mask_z"][0],
-        saveas=(
-            "/home/awilkins/larnd_infill/larnd_infill/tests/target_sigmask_example_{}.pdf".format(
-                os.path.basename(".".join(batch["data_path"][0].split(".")[:-1]))
-            )
-        ),
-        signal_mask_gap_coords=coords_packed_sigmask_gap,
-        signal_mask_active_coords=coords_packed_sigmask_active,
-        max_feat=1
-    )
+    # coords_packed = [[], [], []]
+    # for coord in batch["target_coords"]:
+    #     coords_packed[0].append(coord[1].item())
+    #     coords_packed[1].append(coord[2].item())
+    #     coords_packed[2].append(coord[3].item())
+    # plot_ndlar_voxels_2(
+    #     coords_packed, [ feats[0].item() for feats in batch["target_feats"] ],
+    #     detector,
+    #     vmap["x"], vmap["y"], vmap["z"],
+    #     batch["mask_x"][0], batch["mask_z"][0],
+    #     saveas=(
+    #         "/home/awilkins/larnd_infill/larnd_infill/tests/target_sigmask_example_{}.pdf".format(
+    #             os.path.basename(".".join(batch["data_path"][0].split(".")[:-1]))
+    #         )
+    #     ),
+    #     signal_mask_gap_coords=coords_packed_sigmask_gap,
+    #     signal_mask_active_coords=coords_packed_sigmask_active,
+    #     max_feat=1
+    # )
 
