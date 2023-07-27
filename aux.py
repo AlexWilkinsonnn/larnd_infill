@@ -303,10 +303,10 @@ def plot_ndlar_voxels(
 
 def plot_ndlar_voxels_2(
     coords, feats, detector, x_vmap, y_vmap, z_vmap, x_gaps, z_gaps,
-    z_scalefactor=1, max_feat=300, saveas=None,
+    z_scalefactor=1, max_feat=300, min_feat=0, saveas=None,
     tracks=None, signal_mask_active_coords=None, signal_mask_gap_coords=None
 ):
-    norm_feats = matplotlib.colors.Normalize(vmin=0, vmax=max_feat)
+    norm_feats = matplotlib.colors.Normalize(vmin=min_feat, vmax=max_feat)
     m_feats = matplotlib.cm.ScalarMappable(norm=norm_feats, cmap=matplotlib.cm.jet)
 
     fig, ax = plt.subplots(1, 3, figsize=(18, 6))
