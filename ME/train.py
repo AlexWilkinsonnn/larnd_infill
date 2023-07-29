@@ -11,7 +11,7 @@ from larpixsoft.detector import set_detector_properties
 from larpixsoft.geometry import get_geom_map
 
 from ME.dataset import LarndDataset, DataPrepType, CollateCOO
-from ME.models.completion_net import CompletionNet, CompletionNetSigMask
+from ME.models.completion_net import CompletionNet, CompletionNetSigMask, MyCompletionNet
 from aux import plot_ndlar_voxels_2
 
 DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
@@ -28,11 +28,17 @@ geometry = get_geom_map(PIXEL_LAYOUT)
 with open(VMAP_PATH, "r") as f:
     vmap = yaml.load(f, Loader=yaml.FullLoader)
 
-net = CompletionNet(
+net = MyCompletionNet(
     (vmap["n_voxels"]["x"], vmap["n_voxels"]["y"], vmap["n_voxels"]["z"]),
     in_nchannel=4, out_nchannel=1, final_pruning_threshold=(1 / 150)
 )
 net.to(DEVICE)
+
+print(
+    "Model has {:.1f} million parameters".format(
+        sum(params.numel() for params in net.parameters()) / 1e6
+    )
+)
 
 scalefactors = [1 / 150, 1 / 4]
 dataset = LarndDataset(
@@ -60,8 +66,8 @@ scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
 print("LR {}".format(scheduler.get_lr()))
 
 # crit = nn.BCEWithLogitsLoss()
-crit = nn.MSELoss()
-crit_zeromask = nn.MSELoss(reduction="sum")
+crit = nn.L1Loss()
+crit_zeromask = nn.L1Loss(reduction="sum")
 crit_n_points = nn.L1Loss()
 crit_n_points_zeromask = nn.L1Loss(reduction="sum")
 # crit = nn.L1Loss()
@@ -176,60 +182,44 @@ for i in range(25000):
             s_pred.features_at_coordinates(active_coords_nonzero).squeeze(),
             s_target.features_at_coordinates(active_coords_nonzero).squeeze()
         )
-    
+
     pred_active_features = (s_pred.features_at_coordinates(active_coords) != 0.0)
     target_active_features = (s_target.features_at_coordinates(active_coords) != 0.0)
     batch_active_coords = active_coords[:, 0] == 0
+    pred_n_points = pred_active_features[batch_active_coords].sum(axis=0).type(torch.float)
+    target_n_points = target_active_features[batch_active_coords].sum(axis=0).type(torch.float)
     if batch_active_coords.shape[0]:
-        loss_active_n_points = crit_n_points(
-            pred_active_features[batch_active_coords].sum(axis=0).type(torch.float),
-            target_active_features[batch_active_coords].sum(axis=0).type(torch.float)
-        )
+        loss_active_n_points = crit_n_points(pred_n_points, target_n_points) / target_n_points
     else:
-        loss_active_n_points = crit_n_points_zeromask(
-            pred_active_features[batch_active_coords].sum(axis=0).type(torch.float),
-            target_active_features[batch_active_coords].sum(axis=0).type(torch.float)
-        )
+        loss_active_n_points = crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points
     for i_batch in range(1, batch_size):
         batch_active_coords = active_coords[:, 0] == i_batch
+        pred_n_points = pred_active_features[batch_active_coords].sum(axis=0).type(torch.float)
+        target_n_points = target_active_features[batch_active_coords].sum(axis=0).type(torch.float)
         if batch_active_coords.shape[0]:
-            loss_active_n_points += crit_n_points(
-                pred_active_features[batch_active_coords].sum(axis=0).type(torch.float),
-                target_active_features[batch_active_coords].sum(axis=0).type(torch.float)
-            )
+            loss_active_n_points += crit_n_points(pred_n_points, target_n_points) / target_n_points
         else:
-            loss_active_n_points += crit_n_points_zeromask(
-                pred_active_features[batch_active_coords].sum(axis=0).type(torch.float),
-                target_active_features[batch_active_coords].sum(axis=0).type(torch.float)
-            )
+            loss_active_n_points += crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points
     loss_active_n_points = loss_active_n_points / batch_size
 
     pred_infill_features = (s_pred.features_at_coordinates(infill_coords) != 0.0)
     target_infill_features = (s_target.features_at_coordinates(infill_coords) != 0.0)
     batch_infill_coords = infill_coords[:, 0] == 0
+    pred_n_points = pred_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
+    target_n_points = target_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
     if batch_infill_coords.shape[0]:
-        loss_infill_n_points = crit_n_points(
-            pred_infill_features[batch_infill_coords].sum(axis=0).type(torch.float),
-            target_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
-        )
+        loss_infill_n_points = crit_n_points(pred_n_points, target_n_points) / target_n_points
     else:
-        loss_infill_n_points = crit_n_points_zeromask(
-            pred_infill_features[batch_infill_coords].sum(axis=0).type(torch.float),
-            target_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
-        )
+        loss_infill_n_points = crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points
     for i_batch in range(1, batch_size):
         batch_infill_coords = infill_coords[:, 0] == i_batch
+        pred_n_points = pred_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
+        target_n_points = target_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
         if batch_infill_coords.shape[0]:
-            loss_infill_n_points += crit_n_points(
-                pred_infill_features[batch_infill_coords].sum(axis=0).type(torch.float),
-                target_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
-            )
+            loss_infill_n_points += crit_n_points(pred_n_points, target_n_points) / target_n_points
         else:
-            loss_infill_n_points += crit_n_points_zeromask(
-                pred_infill_features[batch_infill_coords].sum(axis=0).type(torch.float),
-                target_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
-            )
-    loss_active_n_points = loss_active_n_points / batch_size
+            loss_infill_n_points += crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points
+    loss_infill_n_points = loss_infill_n_points / batch_size
 
     loss_tot = (
         loss_infill_zero + loss_infill_nonzero + 0.00001 * loss_infill_n_points +
@@ -246,6 +236,19 @@ for i in range(25000):
     losses_acc["active_zero"].append(loss_active_zero.item())
     losses_acc["active_nonzero"].append(loss_active_nonzero.item())
     losses_acc["active_n_points"].append(loss_active_n_points.item())
+
+    print("s_pred.shape: {}".format(s_pred.shape))
+    # grad_chunks = []
+    # for params in net.parameters():
+    #     grad_chunks.append(torch.flatten(params.grad))
+    #     if type(params.grad) == type(None):
+    #         print(params)
+    #         print(params.grad)
+    #         print("=========")
+    # grads = torch.cat(grad_chunks)
+    # print(torch.min(grads), torch.max(grads), torch.mean(grads), end="\n\n")
+    # nn.utils.clip_grad_norm_(model.parameters(), 1)
+
     optimizer.step()
 
     if (i + 1) % int(200 / batch_size) == 0:
