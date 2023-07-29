@@ -207,7 +207,7 @@ for i in range(25000):
     batch_infill_coords = infill_coords[:, 0] == 0
     pred_n_points = pred_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
     target_n_points = target_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
-    if batch_infill_coords.shape[0] and target_n_points::
+    if batch_infill_coords.shape[0] and target_n_points:
         loss_infill_n_points = crit_n_points(pred_n_points, target_n_points) / target_n_points
     else:
         loss_infill_n_points = crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points
