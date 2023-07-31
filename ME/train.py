@@ -56,7 +56,7 @@ collate_fn = CollateCOO(
     coord_feat_pairs=(("input_coords", "input_feats"), ("target_coords", "target_feats"))
 )
 
-batch_size = 4
+batch_size = 2
 dataloader = torch.utils.data.DataLoader(
     dataset, batch_size=batch_size, collate_fn=collate_fn, num_workers=batch_size
 )
@@ -190,16 +190,20 @@ for i in range(25000):
     target_n_points = target_active_features[batch_active_coords].sum(axis=0).type(torch.float)
     if batch_active_coords.shape[0] and target_n_points:
         loss_active_n_points = crit_n_points(pred_n_points, target_n_points) / target_n_points
-    else:
+    elif target_n_points:
         loss_active_n_points = crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points
+    else:
+        loss_active_n_points = crit_n_points_zeromask(pred_n_points, target_n_points)
     for i_batch in range(1, batch_size):
         batch_active_coords = active_coords[:, 0] == i_batch
         pred_n_points = pred_active_features[batch_active_coords].sum(axis=0).type(torch.float)
         target_n_points = target_active_features[batch_active_coords].sum(axis=0).type(torch.float)
         if batch_active_coords.shape[0] and target_n_points:
             loss_active_n_points += crit_n_points(pred_n_points, target_n_points) / target_n_points
-        else:
+        elif target_n_points:
             loss_active_n_points += crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points
+        else:
+            loss_active_n_points += crit_n_points_zeromask(pred_n_points, target_n_points)
     loss_active_n_points = loss_active_n_points / batch_size
 
     pred_infill_features = (s_pred.features_at_coordinates(infill_coords) != 0.0)
@@ -209,16 +213,20 @@ for i in range(25000):
     target_n_points = target_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
     if batch_infill_coords.shape[0] and target_n_points:
         loss_infill_n_points = crit_n_points(pred_n_points, target_n_points) / target_n_points
-    else:
+    elif target_n_points:
         loss_infill_n_points = crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points
+    else:
+        loss_infill_n_points = crit_n_points_zeromask(pred_n_points, target_n_points)
     for i_batch in range(1, batch_size):
         batch_infill_coords = infill_coords[:, 0] == i_batch
         pred_n_points = pred_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
         target_n_points = target_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
         if batch_infill_coords.shape[0] and target_n_points:
             loss_infill_n_points += crit_n_points(pred_n_points, target_n_points) / target_n_points
-        else:
+        elif target_n_points:
             loss_infill_n_points += crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points
+        else:
+            loss_infill_n_points += crit_n_points_zeromask(pred_n_points, target_n_points)
     loss_infill_n_points = loss_infill_n_points / batch_size
 
     loss_tot = (
