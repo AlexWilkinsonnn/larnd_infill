@@ -182,16 +182,16 @@ for i in range(25000):
             s_pred.features_at_coordinates(active_coords_nonzero).squeeze(),
             s_target.features_at_coordinates(active_coords_nonzero).squeeze()
         )
-
+    
     pred_active_features = (s_pred.features_at_coordinates(active_coords) != 0.0)
     target_active_features = (s_target.features_at_coordinates(active_coords) != 0.0)
     batch_active_coords = active_coords[:, 0] == 0
     pred_n_points = pred_active_features[batch_active_coords].sum(axis=0).type(torch.float)
     target_n_points = target_active_features[batch_active_coords].sum(axis=0).type(torch.float)
     if batch_active_coords.shape[0] and target_n_points:
-        loss_active_n_points = crit_n_points(pred_n_points, target_n_points) / target_n_points
+        loss_active_n_points = crit_n_points(pred_n_points, target_n_points) / target_n_points.squeeze()
     elif target_n_points:
-        loss_active_n_points = crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points
+        loss_active_n_points = crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points.squeeze()
     else:
         loss_active_n_points = crit_n_points_zeromask(pred_n_points, target_n_points)
     for i_batch in range(1, batch_size):
@@ -199,9 +199,9 @@ for i in range(25000):
         pred_n_points = pred_active_features[batch_active_coords].sum(axis=0).type(torch.float)
         target_n_points = target_active_features[batch_active_coords].sum(axis=0).type(torch.float)
         if batch_active_coords.shape[0] and target_n_points:
-            loss_active_n_points += crit_n_points(pred_n_points, target_n_points) / target_n_points
+            loss_active_n_points += crit_n_points(pred_n_points, target_n_points) / target_n_points.squeeze()
         elif target_n_points:
-            loss_active_n_points += crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points
+            loss_active_n_points += crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points.squeeze()
         else:
             loss_active_n_points += crit_n_points_zeromask(pred_n_points, target_n_points)
     loss_active_n_points = loss_active_n_points / batch_size
@@ -212,9 +212,9 @@ for i in range(25000):
     pred_n_points = pred_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
     target_n_points = target_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
     if batch_infill_coords.shape[0] and target_n_points:
-        loss_infill_n_points = crit_n_points(pred_n_points, target_n_points) / target_n_points
+        loss_infill_n_points = crit_n_points(pred_n_points, target_n_points) / target_n_points.squeeze()
     elif target_n_points:
-        loss_infill_n_points = crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points
+        loss_infill_n_points = crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points.squeeze()
     else:
         loss_infill_n_points = crit_n_points_zeromask(pred_n_points, target_n_points)
     for i_batch in range(1, batch_size):
@@ -222,9 +222,9 @@ for i in range(25000):
         pred_n_points = pred_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
         target_n_points = target_infill_features[batch_infill_coords].sum(axis=0).type(torch.float)
         if batch_infill_coords.shape[0] and target_n_points:
-            loss_infill_n_points += crit_n_points(pred_n_points, target_n_points) / target_n_points
+            loss_infill_n_points += crit_n_points(pred_n_points, target_n_points) / target_n_points.squeeze()
         elif target_n_points:
-            loss_infill_n_points += crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points
+            loss_infill_n_points += crit_n_points_zeromask(pred_n_points, target_n_points) / target_n_points.squeeze()
         else:
             loss_infill_n_points += crit_n_points_zeromask(pred_n_points, target_n_points)
     loss_infill_n_points = loss_infill_n_points / batch_size
