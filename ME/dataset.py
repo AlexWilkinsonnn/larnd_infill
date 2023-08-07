@@ -585,7 +585,8 @@ if __name__ == "__main__":
         vmap = yaml.load(f, Loader=yaml.FullLoader)
 
     dataset = LarndDataset(
-        data_path, DataPrepType.GAP_DISTANCE, vmap, 2, 1, [1 / 300, 1 / 5], max_dataset_size=200, seed=1
+        data_path, DataPrepType.GAP_DISTANCE, vmap, 2, 1, [1 / 300, 1 / 5],
+        max_dataset_size=200, seed=1
     )
 
     # collate_fn = CollateCOO(
@@ -606,7 +607,7 @@ if __name__ == "__main__":
 
     dataloader_itr = iter(dataloader)
     s = time.time()
-    num_iters = 20
+    num_iters = 5
     for i in range(num_iters):
         batch = next(dataloader_itr)
     e = time.time()
@@ -646,6 +647,11 @@ if __name__ == "__main__":
         coords_packed[0].append(coord[1].item())
         coords_packed[1].append(coord[2].item())
         coords_packed[2].append(coord[3].item())
+    coords_packed_target = [[], [], []]
+    for coord in batch["target_coords"]:
+        coords_packed_target[0].append(coord[1].item())
+        coords_packed_target[1].append(coord[2].item())
+        coords_packed_target[2].append(coord[3].item())
 
     # plot_ndlar_voxels_2(
     #     coords_packed, [ feats[0].item() for feats in batch["input_feats"] ],
@@ -662,29 +668,44 @@ if __name__ == "__main__":
     #     max_feat=1
     # )
     plot_ndlar_voxels_2(
-        coords_packed, [ feats[2].item() for feats in batch["input_feats"] ],
+        coords_packed, [ feats[0].item() for feats in batch["input_feats"] ],
         detector,
         vmap["x"], vmap["y"], vmap["z"],
         batch["mask_x"][0], batch["mask_z"][0],
         saveas=(
-            "/home/awilkins/larnd_infill/larnd_infill/tests/input_xdistance_example{}.pdf".format(
+            "/home/awilkins/larnd_infill/larnd_infill/tests/input_adc_example{}_pretty.pdf".format(
                 os.path.basename(".".join(batch["data_path"][0].split(".")[:-1]))
             )
         ),
-        max_feat=1, min_feat=-1
+        max_feat=1, min_feat=-1,
+        target_coords=coords_packed_target,
+        target_feats=[ feats[0].item() for feats in batch["target_feats"] ],
+        single_proj_pretty=True
     )
-    plot_ndlar_voxels_2(
-        coords_packed, [ feats[3].item() for feats in batch["input_feats"] ],
-        detector,
-        vmap["x"], vmap["y"], vmap["z"],
-        batch["mask_x"][0], batch["mask_z"][0],
-        saveas=(
-            "/home/awilkins/larnd_infill/larnd_infill/tests/input_zdistance_example{}.pdf".format(
-                os.path.basename(".".join(batch["data_path"][0].split(".")[:-1]))
-            )
-        ),
-        max_feat=1, min_feat=-1
-    )
+    # plot_ndlar_voxels_2(
+    #     coords_packed, [ feats[2].item() for feats in batch["input_feats"] ],
+    #     detector,
+    #     vmap["x"], vmap["y"], vmap["z"],
+    #     batch["mask_x"][0], batch["mask_z"][0],
+    #     saveas=(
+    #         "/home/awilkins/larnd_infill/larnd_infill/tests/input_xdistance_example{}.pdf".format(
+    #             os.path.basename(".".join(batch["data_path"][0].split(".")[:-1]))
+    #         )
+    #     ),
+    #     max_feat=1, min_feat=-1
+    # )
+    # plot_ndlar_voxels_2(
+    #     coords_packed, [ feats[3].item() for feats in batch["input_feats"] ],
+    #     detector,
+    #     vmap["x"], vmap["y"], vmap["z"],
+    #     batch["mask_x"][0], batch["mask_z"][0],
+    #     saveas=(
+    #         "/home/awilkins/larnd_infill/larnd_infill/tests/input_zdistance_example{}.pdf".format(
+    #             os.path.basename(".".join(batch["data_path"][0].split(".")[:-1]))
+    #         )
+    #     ),
+    #     max_feat=1, min_feat=-1
+    # )
 
     # coords_packed = [[], [], []]
     # for coord in batch["target_coords"]:

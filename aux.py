@@ -304,12 +304,18 @@ def plot_ndlar_voxels(
 def plot_ndlar_voxels_2(
     coords, feats, detector, x_vmap, y_vmap, z_vmap, x_gaps, z_gaps,
     z_scalefactor=1, max_feat=300, min_feat=0, saveas=None,
-    tracks=None, signal_mask_active_coords=None, signal_mask_gap_coords=None
+    tracks=None, signal_mask_active_coords=None, signal_mask_gap_coords=None,
+    target_coords=None, target_feats=None,
+    single_proj_pretty=False
 ):
     norm_feats = matplotlib.colors.Normalize(vmin=min_feat, vmax=max_feat)
-    m_feats = matplotlib.cm.ScalarMappable(norm=norm_feats, cmap=matplotlib.cm.jet)
+    if target_coords is None:
+        m_feats = matplotlib.cm.ScalarMappable(norm=norm_feats, cmap=matplotlib.cm.jet)
+    else:
+        m_feats = matplotlib.cm.ScalarMappable(norm=norm_feats, cmap=matplotlib.cm.Blues)
+        m_feats_target = matplotlib.cm.ScalarMappable(norm=norm_feats, cmap=matplotlib.cm.Reds)
 
-    fig, ax = plt.subplots(1, 3, figsize=(18, 6))
+    fig, ax = plt.subplots(1, 3, figsize=(24, 6))
 
     for x_gap_coord in x_gaps:
         x_bin = x_vmap[x_gap_coord]
@@ -344,7 +350,7 @@ def plot_ndlar_voxels_2(
         x_bin = x_vmap[coord_x]
         x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
         y_bin = y_vmap[coord_y]
-        y_size, y_pos = y_bin[1] - y_bin[0], y_bin[0]
+        y_size, y_pos = (y_bin[1] - y_bin[0]) * 4, y_bin[0]
         z_bin = z_vmap[coord_z]
         z_size, z_pos = (z_bin[1] - z_bin[0]) * z_scalefactor, z_bin[0]
 
@@ -369,6 +375,37 @@ def plot_ndlar_voxels_2(
             ax[2].add_patch(
                 matplotlib.patches.Rectangle(pos_zy, z_size, y_size, fc=c, alpha=alpha)
             )
+
+    if target_coords is not None:
+        for coord_x, coord_y, coord_z, feat in zip(*target_coords, target_feats):
+            x_bin = x_vmap[coord_x]
+            x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
+            y_bin = y_vmap[coord_y]
+            y_size, y_pos = (y_bin[1] - y_bin[0]) * 4, y_bin[0]
+            z_bin = z_vmap[coord_z]
+            z_size, z_pos = (z_bin[1] - z_bin[0]) * z_scalefactor, z_bin[0]
+
+            c = m_feats_target.to_rgba(feat)
+            alpha = 1.0
+
+            pos_xy = (x_pos, y_pos)
+            if pos_xy not in curr_patches_xy:
+                curr_patches_xy.add(pos_xy)
+                ax[0].add_patch(
+                    matplotlib.patches.Rectangle(pos_xy, x_size, y_size, fc=c, alpha=alpha)
+                )
+            pos_xz = (x_pos, z_pos)
+            if pos_xz not in curr_patches_xz:
+                curr_patches_xz.add(pos_xz)
+                ax[1].add_patch(
+                    matplotlib.patches.Rectangle(pos_xz, x_size, z_size, fc=c, alpha=alpha)
+                )
+            pos_zy = (z_pos, y_pos)
+            if pos_zy not in curr_patches_zy:
+                curr_patches_zy.add(pos_zy)
+                ax[2].add_patch(
+                    matplotlib.patches.Rectangle(pos_zy, z_size, y_size, fc=c, alpha=alpha)
+                )
 
     # Now draw the signal mask patches
     if signal_mask_active_coords is not None:
@@ -451,6 +488,12 @@ def plot_ndlar_voxels_2(
     ax[0].set_ylabel("y")
     ax[1].set_ylabel("z")
     ax[2].set_ylabel("y")
+
+    if single_proj_pretty:
+        ax[0].set_xlim(540, 720)
+        ax[0].set_ylim(-150, -10)
+        ax[0].set_xlabel("x", fontsize=18)
+        ax[0].set_ylabel("y", fontsize=18)
 
     fig.tight_layout()
     if saveas is not None:
