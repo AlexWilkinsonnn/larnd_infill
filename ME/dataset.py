@@ -271,7 +271,10 @@ class LarndDataset(torch.utils.data.Dataset):
 
         # Smear signal mask in all directions
         signal_mask_active_coords, signal_mask_gap_coords = self._make_signal_mask(
-            coordsxyz_feats, infill_coords, (-2, 3), (-2, 3), (-5, 6), x_gaps_set, z_gaps_set
+            coordsxyz_feats, infill_coords,
+            (-2, 3), (-2, 3), (-5, 6),
+            (-1, 2), (-1, 2), (-3, 4),
+            x_gaps_set, z_gaps_set
         )
 
         input_coords = unmasked_coords
@@ -478,7 +481,10 @@ class LarndDataset(torch.utils.data.Dataset):
                                     )
 
     def _make_signal_mask(
-        self, coordsxyz_feats, infill_coords, x_smear, y_smear, z_smear, x_gaps_set, z_gaps_set
+        self, coordsxyz_feats, infill_coords,
+        x_smear_infill, y_smear_infill, z_smear_infill,
+        x_smear_active, y_smear_active, z_smear_active,
+        x_gaps_set, z_gaps_set
     ):
         signal_mask_active, signal_mask_gap = set(), set()
 
@@ -486,9 +492,9 @@ class LarndDataset(torch.utils.data.Dataset):
         # but using sets here makes later operations faster
 
         for coords in infill_coords:
-            for shift_x in range(*x_smear):
-                for shift_y in range(*y_smear):
-                    for shift_z in range(*z_smear):
+            for shift_x in range(*x_smear_infill):
+                for shift_y in range(*y_smear_infill):
+                    for shift_z in range(*z_smear_infill):
                         coord = (coords[0] + shift_x, coords[1] + shift_y, coords[2] + shift_z)
                         if coord[0] in x_gaps_set or coord[2] in z_gaps_set:
                             signal_mask_gap.add(coord)
@@ -498,9 +504,9 @@ class LarndDataset(torch.utils.data.Dataset):
         for coord_x, coordsyz_feats in coordsxyz_feats.items():
             for coord_y, coordsz_feats in coordsyz_feats.items():
                 for coord_z in coordsz_feats:
-                    for shift_x in range(*x_smear):
-                        for shift_y in range(*y_smear):
-                            for shift_z in range(*z_smear):
+                    for shift_x in range(*x_smear_active):
+                        for shift_y in range(*y_smear_active):
+                            for shift_z in range(*z_smear_active):
                                 coord = (coord_x + shift_x, coord_y + shift_y, coord_z + shift_z)
                                 if coord[0] in x_gaps_set or coord[2] in z_gaps_set:
                                     signal_mask_gap.add(coord)

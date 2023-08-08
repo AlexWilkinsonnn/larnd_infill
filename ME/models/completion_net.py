@@ -331,10 +331,13 @@ class CompletionNetSigMask(nn.Module):
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
     DEC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
 
-    def __init__(self, pointcloud_size, in_nchannel=1, out_nchannel=1):
+    def __init__(
+        self, pointcloud_size, in_nchannel=1, out_nchannel=1, final_pruning_threshold=None
+    ):
         nn.Module.__init__(self)
 
         self.pointcloud_size = pointcloud_size
+        self.final_pruning_threshold = final_pruning_threshold
 
         # Input sparse tensor must have tensor stride 128.
         enc_ch = self.ENC_CHANNELS
@@ -510,11 +513,13 @@ class CompletionNetSigMask(nn.Module):
             (t.C[:, 2] < self.pointcloud_size[1]) *
             (t.C[:, 3] < self.pointcloud_size[2])
         )
+        if self.final_pruning_threshold is not None:
+            keep = keep + (t.F[:, 0] > self.final_pruning_threshold)
+
         keep = keep.squeeze()
-        
+
         try:
             if not keep.shape and keep.item() or keep.sum().item() == 0:
-                # print("keep.sum().item() == 0 in final pruning layer")
                 return t
         except:
             print(keep)
@@ -550,15 +555,7 @@ class CompletionNetSigMask(nn.Module):
         return True
 
     def forward(self, input_t):
-        # Include mask of signal area including predicted gap locations calculated with reflections
-        # if sigmask_gap_t.shape[0]:
-        #     input_t = input_t + sigmask_gap_t
-
-        # print()
-        # print(input_t.F.shape)
-
         enc_s1 = self.enc_block_s1(input_t)
-
         enc_s2 = self.enc_block_s1s2(enc_s1)
         enc_s4 = self.enc_block_s2s4(enc_s2)
         enc_s8 = self.enc_block_s4s8(enc_s4)
@@ -570,106 +567,45 @@ class CompletionNetSigMask(nn.Module):
         # Decoder 64 -> 32
         ##################################################
         dec_s32 = self.dec_block_s64s32(enc_s64)
-
         # Add encoder features
         dec_s32 = dec_s32 + enc_s32
-
-        dec_s32_cls = self.dec_s32_cls(dec_s32)
-        keep_s32 = (dec_s32_cls.F > 0).squeeze()
-
-        # Remove voxels s32
-        dec_s32 = self._pruning_layer(dec_s32, keep_s32)
-    
-        # print("Pruned {}".format((~keep_s32).sum()))
-        # print(dec_s32.F.shape)
 
         ##################################################
         # Decoder 32 -> 16
         ##################################################
-        # dec_s16 = self.dec_block_s32s16(enc_s32)
         dec_s16 = self.dec_block_s32s16(dec_s32)
-
-        # Add encoder features
         dec_s16 = dec_s16 + enc_s16
-
-        dec_s16_cls = self.dec_s16_cls(dec_s16)
-        keep_s16 = (dec_s16_cls.F > 0).squeeze()
-
-        # Remove voxels s16
-        dec_s16 = self._pruning_layer(dec_s16, keep_s16)
-
-        # print("Pruned {}".format((~keep_s16).sum()))
-        # print(dec_s16.F.shape)
 
         ##################################################
         # Decoder 16 -> 8
         ##################################################
         dec_s8 = self.dec_block_s16s8(dec_s16)
-
-        # Add encoder features
-
         dec_s8 = dec_s8 + enc_s8
-        dec_s8_cls = self.dec_s8_cls(dec_s8)
-        keep_s8 = (dec_s8_cls.F > 0).squeeze()
-
-        # Remove voxels s16
-        dec_s8 = self._pruning_layer(dec_s8, keep_s8)
-
-        # print("Pruned {}".format((~keep_s8).sum()))
-        # print(dec_s8.F.shape)
 
         ##################################################
         # Decoder 8 -> 4
         ##################################################
         dec_s4 = self.dec_block_s8s4(dec_s8)
-
-        # Add encoder features
         dec_s4 = dec_s4 + enc_s4
-
-        dec_s4_cls = self.dec_s4_cls(dec_s4)
-        keep_s4 = (dec_s4_cls.F > 0).squeeze()
-
-
-        # Remove voxels s4
-        dec_s4 = self._pruning_layer(dec_s4, keep_s4)
-
-        # print("Pruned {}".format((~keep_s4).sum()))
-        # print(dec_s4.F.shape)
 
         ##################################################
         # Decoder 4 -> 2
         ##################################################
         dec_s2 = self.dec_block_s4s2(dec_s4)
-
-        # Add encoder features
         dec_s2 = dec_s2 + enc_s2
-
-        dec_s2_cls = self.dec_s2_cls(dec_s2)
-        keep_s2 = (dec_s2_cls.F > 0).squeeze()
-
-        # Remove voxels s2
-        dec_s2 = self._pruning_layer(dec_s2, keep_s2)
-
-        # print("Pruned {}".format((~keep_s2).sum()))
-        # print(dec_s2.F.shape)
 
         ##################################################
         # Decoder 2 -> 1
         ##################################################
         dec_s1 = self.dec_block_s2s1(dec_s2)
-        # dec_s1_cls = self.dec_s1_cls(dec_s1)
-
-        # # Add encoder features
         dec_s1 = dec_s1 + enc_s1
 
         dec_s1_cls = self.dec_s1_cls(dec_s1)
+
         keep_s1 = (dec_s1_cls.F > 0).squeeze()
-
         dec_s1_cls = self._pruning_layer(dec_s1_cls, keep_s1)
-        dec_s1_cls = self._final_pruning_layer(dec_s1_cls)
 
-        # print("Pruned {}".format((~keep_s1).sum()))
-        # print("Output shape {}".format(dec_s1_cls.shape))
+        dec_s1_cls = self._final_pruning_layer(dec_s1_cls)
 
         return dec_s1_cls
 
@@ -1003,10 +939,13 @@ class CompletionNetSigMask(nn.Module):
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
     DEC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
 
-    def __init__(self, pointcloud_size, in_nchannel=1, out_nchannel=1):
+    def __init__(
+        self, pointcloud_size, in_nchannel=1, out_nchannel=1, final_pruning_threshold=None
+    ):
         nn.Module.__init__(self)
 
         self.pointcloud_size = pointcloud_size
+        self.final_pruning_threshold = final_pruning_threshold
 
         # Input sparse tensor must have tensor stride 128.
         enc_ch = self.ENC_CHANNELS
@@ -1182,8 +1121,11 @@ class CompletionNetSigMask(nn.Module):
             (t.C[:, 2] < self.pointcloud_size[1]) *
             (t.C[:, 3] < self.pointcloud_size[2])
         )
+        if self.final_pruning_threshold is not None:
+            keep = keep + (t.F[:, 0] > self.final_pruning_threshold)
+
         keep = keep.squeeze()
-        
+
         try:
             if not keep.shape and keep.item() or keep.sum().item() == 0:
                 # print("keep.sum().item() == 0 in final pruning layer")
@@ -1251,7 +1193,7 @@ class CompletionNetSigMask(nn.Module):
 
         # Remove voxels s32
         dec_s32 = self._pruning_layer(dec_s32, keep_s32)
-    
+
         # print("Pruned {}".format((~keep_s32).sum()))
         # print(dec_s32.F.shape)
 

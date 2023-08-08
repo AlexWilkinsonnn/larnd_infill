@@ -350,7 +350,7 @@ def plot_ndlar_voxels_2(
         x_bin = x_vmap[coord_x]
         x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
         y_bin = y_vmap[coord_y]
-        y_size, y_pos = (y_bin[1] - y_bin[0]) * 4, y_bin[0]
+        y_size, y_pos = (y_bin[1] - y_bin[0]) * 2, y_bin[0]
         z_bin = z_vmap[coord_z]
         z_size, z_pos = (z_bin[1] - z_bin[0]) * z_scalefactor, z_bin[0]
 
@@ -381,7 +381,7 @@ def plot_ndlar_voxels_2(
             x_bin = x_vmap[coord_x]
             x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
             y_bin = y_vmap[coord_y]
-            y_size, y_pos = (y_bin[1] - y_bin[0]) * 4, y_bin[0]
+            y_size, y_pos = (y_bin[1] - y_bin[0]) * 2, y_bin[0]
             z_bin = z_vmap[coord_z]
             z_size, z_pos = (z_bin[1] - z_bin[0]) * z_scalefactor, z_bin[0]
 
