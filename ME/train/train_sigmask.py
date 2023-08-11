@@ -1,4 +1,4 @@
-import time
+import time, argparse, os
 from collections import defaultdict
 
 import yaml
@@ -9,30 +9,30 @@ import MinkowskiEngine as ME
 
 from larpixsoft.detector import set_detector_properties
 
-from ME.dataset import LarndDataset, DataPrepType, CollateCOO
+from ME.config_parser import get_config
+from ME.dataset import LarndDataset, CollateCOO
 from ME.models.completion_net import CompletionNetSigMask
 from aux import plot_ndlar_voxels_2
 
-DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
-PIXEL_LAYOUT=(
-    "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
-)
-DEVICE = torch.device("cuda:0")
-DATA_PATH = "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10/all"
-VMAP_PATH = "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"
+# DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
+# PIXEL_LAYOUT=(
+#     "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
+# )
+# DEVICE = torch.device("cuda:0")
+# DATA_PATH = "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10/all"
+# VMAP_PATH = "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"
 
-def main():
-    detector = set_detector_properties(DET_PROPS, PIXEL_LAYOUT, pedestal=74)
-    # geometry = get_geom_map(PIXEL_LAYOUT)
+def main(args):
+    conf = get_config(args.config)
 
-    with open(VMAP_PATH, "r") as f:
-        vmap = yaml.load(f, Loader=yaml.FullLoader)
+    device = torch.device(conf.device)
 
     net = CompletionNetSigMask(
-        (vmap["n_voxels"]["x"], vmap["n_voxels"]["y"], vmap["n_voxels"]["z"]),
-        in_nchannel=3, out_nchannel=1, final_pruning_threshold=(1 / 150)
+        (conf.vmap["n_voxels"]["x"], conf.vmap["n_voxels"]["y"], conf.vmap["n_voxels"]["z"]),
+        in_nchannel=conf.n_feats_in + 1, out_nchannel=conf.n_feats_out,
+        final_pruning_threshold=conf.scalefactors[0]
     )
-    net.to(DEVICE)
+    net.to(device)
 
     print(
         "Model has {:.1f} million parameters".format(
@@ -40,48 +40,40 @@ def main():
         )
     )
 
-    scalefactors = [1 / 150, 1 / 4]
     dataset = LarndDataset(
-        DATA_PATH, DataPrepType.REFLECTION, vmap, 2, 1, scalefactors, max_dataset_size=10000, seed=1
+        conf.data_path,
+        conf.data_prep_type,
+        conf.vmap,
+        conf.n_feats_in, conf.n_feats_out,
+        conf.scalefactors,
+        max_dataset_size=conf.max_dataset_size
     )
 
     collate_fn = CollateCOO(
         coord_feat_pairs=(("input_coords", "input_feats"), ("target_coords", "target_feats"))
     )
 
-    # collate_fn = CollateCOO(
-    #     coord_feat_pairs=(
-    #         ("input_coords", "input_feats"), ("target_coords", "target_feats"),
-    #         ("signal_mask_active_coords", "signal_mask_active_feats"),
-    #         ("signal_mask_gap_coords", "signal_mask_gap_feats")
-    #     )
-    # )
-
-    batch_size = 1
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, collate_fn=collate_fn, num_workers=batch_size, shuffle=True
+        dataset,
+        batch_size=conf.batch_size,
+        collate_fn=collate_fn,
+        num_workers=max(conf.max_num_workers, conf.batch_size),
+        shuffle=True
     )
 
-    optimizer = optim.SGD(net.parameters(), lr=1e-2, momentum=0.9, weight_decay=1e-4)
+    optimizer = optim.SGD(net.parameters(), lr=conf.initial_lr, momentum=0.9, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
     print("LR {}".format(scheduler.get_lr()))
 
-    crit = nn.L1Loss()
-    crit_zeromask = nn.L1Loss(reduction="sum")
-    # crit_n_points = nn.L1Loss()
-    # crit_n_points_zeromask = nn.L1Loss(reduction="sum")
+    crit, crit_zeromask = init_loss_func(conf.loss_func)
 
     net.train()
 
     t0 = time.time()
     losses_acc = defaultdict(list)
-    epochs = 10
     n_iter = 0
-    print_iter = 500
-    plot_iter = 1000
-    lr_decay_iter = 10000
 
-    for epoch in range(epochs):
+    for epoch in range(conf.epochs):
         print("Epoch {}".format(epoch))
 
         for data in dataloader:
@@ -89,49 +81,26 @@ def main():
 
             try:
                 s_in = ME.SparseTensor(
-                    coordinates=data["input_coords"], features=data["input_feats"], device=DEVICE
+                    coordinates=data["input_coords"], features=data["input_feats"], device=device
                 )
-                # s_sigmask_active = ME.SparseTensor(
-                #     coordinates=data["signal_mask_active_coords"],
-                #     features=data["signal_mask_active_feats"],
-                #     device=DEVICE, coordinate_manager=s_in.coordinate_manager
-                # )
-                # s_sigmask_gap = ME.SparseTensor(
-                #     coordinates=data["signal_mask_gap_coords"],
-                #     features=data["signal_mask_gap_feats"],
-                #     device=DEVICE, coordinate_manager=s_in.coordinate_manager
-                # )
                 s_target = ME.SparseTensor(
-                    coordinates=data["target_coords"], features=data["target_feats"], device=DEVICE
+                    coordinates=data["target_coords"], features=data["target_feats"], device=device
                 )
             except Exception as e:
                 print("Failed to load in GPU sparse tensors - ", end="")
                 print(e)
                 continue
 
-            # if s_sigmask_gap.F.shape[0]:
-            #     s_in = s_in + s_sigmask_gap
-            # if s_sigmask_active.F.shape[0]:
-            #     s_in = s_in + s_sigmask_active
-
-            try:
-                s_pred = net(s_in)
-            except Exception as e:
-                # print(s_in.C)
-                # print(s_in.C.shape)
-                # print(s_in.F.shape)
-                # print(s_sigmask_active.F.shape)
-                # print(s_sigmask_gap.F.shape)
-                print("net(s_in) failed - ", end="")
-                print(e)
-                continue
+            s_pred = net(s_in)
 
             ret = calc_losses(s_pred, s_in, s_target, crit, crit_zeromask)
             loss_infill_zero, loss_infill_nonzero, loss_active_zero, loss_active_nonzero = ret
 
             loss_tot = (
-                loss_infill_zero + loss_infill_nonzero +
-                0.0001 * loss_active_zero + 0.0001 * loss_active_nonzero
+                conf.loss_infill_zero_weight * loss_infill_zero +
+                conf.loss_infill_nonzero_weight * loss_infill_nonzero +
+                conf.loss_active_zero_weight * loss_active_zero +
+                conf.loss_active_nonzero_weight * loss_active_nonzero
             )
 
             loss_tot.backward()
@@ -143,21 +112,40 @@ def main():
 
             optimizer.step()
 
-            if (n_iter + 1) % int(print_iter / batch_size) == 0:
+            if (n_iter + 1) % int(args.print_iter / conf.batch_size) == 0:
                 t_iter = time.time() - t0
                 t0 = time.time()
                 print_losses(losses_acc, n_iter, t_iter, s_pred)
                 losses_acc = defaultdict(list)
 
-            if (n_iter + 1) % int(plot_iter / batch_size) == 0:
-                plot_pred(s_pred, s_in, s_target, data, vmap, scalefactors, n_iter, detector)
+            if (n_iter + 1) % int(args.valid_iter / conf.batch_size) == 0:
+                plot_pred(
+                    s_pred, s_in, s_target,
+                    data,
+                    conf.vmap,
+                    conf.scalefactors,
+                    n_iter,
+                    conf.detector,
+                    save_dir=os.path.join(conf.checkpoints_dir, conf.name)
+                )
 
-            if (n_iter + 1) % int(lr_decay_iter / batch_size) == 0:
+            if (n_iter + 1) % int(conf.lr_decay_iter / conf.batch_size) == 0:
                 scheduler.step()
                 print("LR {}".format(scheduler.get_lr()))
 
             n_iter += 1
 
+def init_loss_func(loss_func):
+    if loss_func == "L1Loss":
+        crit = nn.L1Loss()
+        crit_zeromask = nn.L1Loss(reduction="sum")
+    elif loss_func == "MSELoss":
+        crit = nn.MSELoss()
+        crit_zeromask = nn.MSELoss(reduction="sum")
+    else:
+        raise NotImplementedError("loss_func={} not valid".format(loss_func))
+
+    return crit, crit_zeromask
 
 def calc_losses(s_pred, s_in, s_target, crit, crit_zeromask):
     s_in_infill_mask = s_in.F[:, -1] == 1
@@ -172,21 +160,16 @@ def calc_losses(s_pred, s_in, s_target, crit, crit_zeromask):
     active_coords_zero = active_coords[active_coords_zero_mask]
     active_coords_nonzero = active_coords[~active_coords_zero_mask]
 
-    try:
-        if infill_coords_zero.shape[0]:
-            loss_infill_zero = crit(
-                s_pred.features_at_coordinates(infill_coords_zero).squeeze(),
-                s_target.features_at_coordinates(infill_coords_zero).squeeze()
-            )
-        else:
-            loss_infill_zero = crit_zeromask(
-                s_pred.features_at_coordinates(infill_coords_zero).squeeze(),
-                s_target.features_at_coordinates(infill_coords_zero).squeeze()
-            )
-    except Exception as e:
-        print("s_pred.shape: {}".format(s_pred.shape))
-        print("s_in_infill_mask.sum(): {}".format(s_in_infill_mask.sum()))
-        raise e
+    if infill_coords_zero.shape[0]:
+        loss_infill_zero = crit(
+            s_pred.features_at_coordinates(infill_coords_zero).squeeze(),
+            s_target.features_at_coordinates(infill_coords_zero).squeeze()
+        )
+    else:
+        loss_infill_zero = crit_zeromask(
+            s_pred.features_at_coordinates(infill_coords_zero).squeeze(),
+            s_target.features_at_coordinates(infill_coords_zero).squeeze()
+        )
 
     if infill_coords_nonzero.shape[0]:
         loss_infill_nonzero = crit(
@@ -233,7 +216,9 @@ def print_losses(losses_acc, n_iter, t_iter, s_pred):
     )
 
 
-def plot_pred(s_pred, s_in, s_target, data, vmap, scalefactors, n_iter, detector):
+def plot_pred(
+    s_pred, s_in, s_target, data, vmap, scalefactors, n_iter, detector, max_evs=2, save_dir="test/"
+):
     for i_batch, (
         coords_pred, feats_pred, coords_target, feats_target, coords_in, feats_in
     ) in enumerate(
@@ -243,7 +228,7 @@ def plot_pred(s_pred, s_in, s_target, data, vmap, scalefactors, n_iter, detector
             *s_in.decomposed_coordinates_and_features
         )
     ):
-        if i_batch > 2:
+        if i_batch >= max_evs:
             break
 
         coords_pred, feats_pred = coords_pred.cpu(), feats_pred.cpu() * (1 / scalefactors[0])
@@ -295,7 +280,7 @@ def plot_pred(s_pred, s_in, s_target, data, vmap, scalefactors, n_iter, detector
             detector,
             vmap["x"], vmap["y"], vmap["z"],
             batch_mask_x, batch_mask_z,
-            saveas="tests/iter{}_batch{}_pred.pdf".format(n_iter + 1, i_batch),
+            saveas=os.path.join(save_dir, "iter{}_batch{}_pred.pdf".format(n_iter + 1, i_batch)),
             max_feat=150,
             signal_mask_gap_coords=coords_sigmask_gap_packed,
             signal_mask_active_coords=coords_sigmask_active_packed
@@ -305,7 +290,9 @@ def plot_pred(s_pred, s_in, s_target, data, vmap, scalefactors, n_iter, detector
             detector,
             vmap["x"], vmap["y"], vmap["z"],
             batch_mask_x, batch_mask_z,
-            saveas="tests/iter{}_batch{}_pred_predonly.pdf".format(n_iter + 1, i_batch),
+            saveas=os.path.join(
+                save_dir, "iter{}_batch{}_pred_predonly.pdf".format(n_iter + 1, i_batch)
+            ),
             max_feat=150,
             signal_mask_gap_coords=coords_sigmask_gap_packed,
             signal_mask_active_coords=coords_sigmask_active_packed
@@ -315,13 +302,27 @@ def plot_pred(s_pred, s_in, s_target, data, vmap, scalefactors, n_iter, detector
             detector,
             vmap["x"], vmap["y"], vmap["z"],
             batch_mask_x, batch_mask_z,
-            saveas="tests/iter{}_batch{}_target.pdf".format(n_iter + 1, i_batch),
+            saveas=os.path.join(save_dir, "iter{}_batch{}_target.pdf".format(n_iter + 1, i_batch)),
             max_feat=150,
             signal_mask_gap_coords=coords_sigmask_gap_packed,
             signal_mask_active_coords=coords_sigmask_active_packed
         )
 
 
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("config")
+
+    parser.add_argument("--valid_iter", type=int, default=1000)
+    parser.add_argument("--print_iter", type=int, default=200)
+
+    args = parser.parse_args()
+
+    return args
+
+
 if __name__ == "__main__":
-    main()
+    args = parse_arguments()
+    main(args)
 

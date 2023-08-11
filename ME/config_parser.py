@@ -1,3 +1,4 @@
+import os
 from collections import namedtuple
 
 import yaml
@@ -17,10 +18,9 @@ defaults = {
     ),
     "device" : "cuda:0",
     "max_num_workers" : 4,
-    "loss_func_n-points" : "L1Loss"
 }
 
-mandatory_fields = set(
+mandatory_fields = {
     "vmap_path", "data_path",
     "data_prep_type",
     "scalefactors",
@@ -29,8 +29,15 @@ mandatory_fields = set(
     "batch_size",
     "initial_lr",
     "loss_func",
-    "epochs"
-)
+    "epochs",
+    "lr_decay_iter",
+    "loss_infill_zero_weight",
+    "loss_infill_nonzero_weight",
+    "loss_active_zero_weight",
+    "loss_active_nonzero_weight",
+    "checkpoints_dir",
+    "name"
+}
 
 
 def get_config(config_file):
@@ -55,7 +62,7 @@ def get_config(config_file):
     del config_dict["det_props"]
     del config_dict["pixel_layout"]
 
-    with open(config["vmap_path"], "r") as f:
+    with open(config_dict["vmap_path"], "r") as f:
         config_dict["vmap"] = yaml.load(f, Loader=yaml.FullLoader)
     del config_dict["vmap_path"]
 
@@ -63,10 +70,15 @@ def get_config(config_file):
         config_dict["data_prep_type"] = DataPrepType.STANDARD
     elif config_dict["data_prep_type"] == "reflection":
         config_dict["data_prep_type"] = DataPrepType.REFLECTION
+    elif config_dict["data_prep_type"] == "reflection_separate_masks":
+        config_dict["data_prep_type"] = DataPrepType.REFLECTION_SEPARATE_MASKS
     elif config_dict["data_prep_type"] == "gap_distance":
         config_dict["data_prep_type"] = DataPrepType.GAP_DISTANCE
     else:
         raise ValueError("data_prep_type={} not recognised".format(config_dict["data_prep_type"]))
+
+    if not os.path.exists(os.path.join(config_dict['checkpoints_dir'], config_dict['name'])):
+        os.makedirs(os.path.join(config_dict['checkpoints_dir'], config_dict['name']))
 
     config_namedtuple = namedtuple("config", config_dict)
     config = config_namedtuple(**config_dict)
