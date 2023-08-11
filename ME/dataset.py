@@ -145,7 +145,10 @@ class LarndDataset(torch.utils.data.Dataset):
             ret = self._getitem_standard(
                 unmasked_coords, unmasked_feats, masked_coords, masked_feats, x_gaps, z_gaps
             )
-        elif self.prep_type == DataPrepType.REFLECTION:
+        elif (
+            self.prep_type == DataPrepType.REFLECTION_SEPARATE_MASKS or
+            self.prep_type == DataPrepType.REFLECTION
+        ):
             ret = self._getitem_reflection(
                 data["xyz"], data["zxy"],
                 unmasked_coords, unmasked_feats, masked_coords, masked_feats, x_gaps, z_gaps
@@ -272,8 +275,8 @@ class LarndDataset(torch.utils.data.Dataset):
         # Smear signal mask in all directions
         signal_mask_active_coords, signal_mask_gap_coords = self._make_signal_mask(
             coordsxyz_feats, infill_coords,
-            (-2, 3), (-2, 3), (-5, 6),
             (-1, 2), (-1, 2), (-3, 4),
+            (0, 1), (0, 1), (0, 1),
             x_gaps_set, z_gaps_set
         )
 
@@ -295,6 +298,28 @@ class LarndDataset(torch.utils.data.Dataset):
             (signal_mask_gap_coords.shape[0], self.n_feats_in + 1), dtype=torch.float
         )
         signal_mask_gap_feats[:, -1] = 1
+
+        # input_coords_set = { (coord[0], coord[1], coord[2]) for coord in input_coords }
+        # signal_mask_gap_coords_set = { (coord[0], coord[1], coord[2]) for coord in signal_mask_gap_coords }
+        # signal_mask_active_coords_set = { (coord[0], coord[1], coord[2]) for coord in signal_mask_active_coords }
+        # print(len(input_coords_set.intersection(signal_mask_gap_coords_set)))
+        # print(len(input_coords_set.intersection(signal_mask_active_coords_set)))
+
+        if self.prep_type == DataPrepType.REFLECTION:
+            input_coords = np.concatenate(
+                (input_coords, signal_mask_active_coords, signal_mask_gap_coords)
+            )
+            input_feats = np.concatenate(
+                (input_feats, signal_mask_active_feats, signal_mask_gap_feats)
+            )
+
+            return {
+                "input_coords" : torch.IntTensor(input_coords),
+                "input_feats" : torch.FloatTensor(input_feats),
+                "target_coords" : torch.IntTensor(target_coords),
+                "target_feats" : torch.FloatTensor(target_feats),
+                "mask_x" : x_gaps, "mask_z" : z_gaps
+            }
 
         return {
             "input_coords" : torch.IntTensor(input_coords),
@@ -513,6 +538,12 @@ class LarndDataset(torch.utils.data.Dataset):
                                 else:
                                     signal_mask_active.add(coord)
 
+        if self.prep_type == DataPrepType.REFLECTION:
+            for coord_x, coordsyz_feats in coordsxyz_feats.items():
+                for coord_y, coordsz_feats in coordsyz_feats.items():
+                    for coord_z in coordsz_feats:
+                        signal_mask_active.discard((coord_x, coord_y, coord_z))
+
         signal_mask_active = self._list2array(
             [
                 list(coord)
@@ -580,7 +611,8 @@ class CollateCOO:
 class DataPrepType(Enum):
     STANDARD = 1
     REFLECTION = 2
-    GAP_DISTANCE = 3
+    REFLECTION_SEPARATE_MASKS = 3
+    GAP_DISTANCE = 4
 
 
 # Testing

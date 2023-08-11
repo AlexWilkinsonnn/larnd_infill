@@ -418,7 +418,7 @@ def plot_ndlar_voxels_2(
             z_size, z_pos = (z_bin[1] - z_bin[0]) * z_scalefactor, z_bin[0]
 
             c = "green"
-            alpha = 0.5
+            alpha = 0.3
 
             pos_xy = (x_pos, y_pos)
             if pos_xy not in curr_patches_xy:
@@ -449,7 +449,7 @@ def plot_ndlar_voxels_2(
             z_size, z_pos = (z_bin[1] - z_bin[0]) * z_scalefactor, z_bin[0]
 
             c = "red"
-            alpha = 0.5
+            alpha = 0.3
 
             pos_xy = (x_pos, y_pos)
             if pos_xy not in curr_patches_xy:

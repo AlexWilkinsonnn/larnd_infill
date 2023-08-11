@@ -8,7 +8,6 @@ import torch; import torch.optim as optim; import torch.nn as nn
 import MinkowskiEngine as ME
 
 from larpixsoft.detector import set_detector_properties
-from larpixsoft.geometry import get_geom_map
 
 from ME.dataset import LarndDataset, DataPrepType, CollateCOO
 from ME.models.completion_net import CompletionNetSigMask
@@ -43,20 +42,24 @@ def main():
 
     scalefactors = [1 / 150, 1 / 4]
     dataset = LarndDataset(
-        DATA_PATH, DataPrepType.REFLECTION, vmap, 2, 1, scalefactors, max_dataset_size=5000, seed=1
+        DATA_PATH, DataPrepType.REFLECTION, vmap, 2, 1, scalefactors, max_dataset_size=10000, seed=1
     )
 
     collate_fn = CollateCOO(
-        coord_feat_pairs=(
-            ("input_coords", "input_feats"), ("target_coords", "target_feats"),
-            ("signal_mask_active_coords", "signal_mask_active_feats"),
-            ("signal_mask_gap_coords", "signal_mask_gap_feats")
-        )
+        coord_feat_pairs=(("input_coords", "input_feats"), ("target_coords", "target_feats"))
     )
+
+    # collate_fn = CollateCOO(
+    #     coord_feat_pairs=(
+    #         ("input_coords", "input_feats"), ("target_coords", "target_feats"),
+    #         ("signal_mask_active_coords", "signal_mask_active_feats"),
+    #         ("signal_mask_gap_coords", "signal_mask_gap_feats")
+    #     )
+    # )
 
     batch_size = 1
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=batch_size, collate_fn=collate_fn, num_workers=batch_size
+        dataset, batch_size=batch_size, collate_fn=collate_fn, num_workers=batch_size, shuffle=True
     )
 
     optimizer = optim.SGD(net.parameters(), lr=1e-2, momentum=0.9, weight_decay=1e-4)
@@ -72,12 +75,11 @@ def main():
 
     t0 = time.time()
     losses_acc = defaultdict(list)
-    # num_points_acc = []
     epochs = 10
     n_iter = 0
-    print_iter = 200
-    plot_iter = 200
-    lr_decay_iter = 5000
+    print_iter = 500
+    plot_iter = 1000
+    lr_decay_iter = 10000
 
     for epoch in range(epochs):
         print("Epoch {}".format(epoch))
@@ -89,27 +91,28 @@ def main():
                 s_in = ME.SparseTensor(
                     coordinates=data["input_coords"], features=data["input_feats"], device=DEVICE
                 )
-                s_sigmask_active = ME.SparseTensor(
-                    coordinates=data["signal_mask_active_coords"],
-                    features=data["signal_mask_active_feats"],
-                    device=DEVICE, coordinate_manager=s_in.coordinate_manager
-                )
-                s_sigmask_gap = ME.SparseTensor(
-                    coordinates=data["signal_mask_gap_coords"], features=data["signal_mask_gap_feats"],
-                    device=DEVICE, coordinate_manager=s_in.coordinate_manager
-                )
+                # s_sigmask_active = ME.SparseTensor(
+                #     coordinates=data["signal_mask_active_coords"],
+                #     features=data["signal_mask_active_feats"],
+                #     device=DEVICE, coordinate_manager=s_in.coordinate_manager
+                # )
+                # s_sigmask_gap = ME.SparseTensor(
+                #     coordinates=data["signal_mask_gap_coords"],
+                #     features=data["signal_mask_gap_feats"],
+                #     device=DEVICE, coordinate_manager=s_in.coordinate_manager
+                # )
                 s_target = ME.SparseTensor(
                     coordinates=data["target_coords"], features=data["target_feats"], device=DEVICE
                 )
             except Exception as e:
-                print("Failed to load into GPU sparse tensors - ", end="")
+                print("Failed to load in GPU sparse tensors - ", end="")
                 print(e)
                 continue
 
-            if s_sigmask_gap.F.shape[0]:
-                s_in = s_in + s_sigmask_gap
-            if s_sigmask_active.F.shape[0]:
-                s_in = s_in + s_sigmask_active
+            # if s_sigmask_gap.F.shape[0]:
+            #     s_in = s_in + s_sigmask_gap
+            # if s_sigmask_active.F.shape[0]:
+            #     s_in = s_in + s_sigmask_active
 
             try:
                 s_pred = net(s_in)
@@ -123,13 +126,11 @@ def main():
                 print(e)
                 continue
 
-            ret = calc_losses(
-                s_pred, s_target, s_sigmask_gap, s_sigmask_active, crit, crit_zeromask
-            )
+            ret = calc_losses(s_pred, s_in, s_target, crit, crit_zeromask)
             loss_infill_zero, loss_infill_nonzero, loss_active_zero, loss_active_nonzero = ret
 
             loss_tot = (
-                0.0000001 * loss_infill_zero + loss_infill_nonzero +
+                loss_infill_zero + loss_infill_nonzero +
                 0.0001 * loss_active_zero + 0.0001 * loss_active_nonzero
             )
 
@@ -149,7 +150,7 @@ def main():
                 losses_acc = defaultdict(list)
 
             if (n_iter + 1) % int(plot_iter / batch_size) == 0:
-                plot_pred(s_pred, s_target, data, vmap, scalefactors, n_iter, detector)
+                plot_pred(s_pred, s_in, s_target, data, vmap, scalefactors, n_iter, detector)
 
             if (n_iter + 1) % int(lr_decay_iter / batch_size) == 0:
                 scheduler.step()
@@ -158,13 +159,15 @@ def main():
             n_iter += 1
 
 
-def calc_losses(s_pred, s_target, s_sigmask_gap, s_sigmask_active, crit, crit_zeromask):
-    infill_coords = s_sigmask_gap.C.type(torch.float)
+def calc_losses(s_pred, s_in, s_target, crit, crit_zeromask):
+    s_in_infill_mask = s_in.F[:, -1] == 1
+    infill_coords = s_in.C[s_in_infill_mask].type(torch.float)
+    active_coords = s_in.C[~s_in_infill_mask].type(torch.float)
+
     infill_coords_zero_mask = s_target.features_at_coordinates(infill_coords)[:, 0] == 0
     infill_coords_zero = infill_coords[infill_coords_zero_mask]
     infill_coords_nonzero = infill_coords[~infill_coords_zero_mask]
 
-    active_coords = s_sigmask_active.C.type(torch.float)
     active_coords_zero_mask = s_target.features_at_coordinates(active_coords)[:, 0] == 0
     active_coords_zero = active_coords[active_coords_zero_mask]
     active_coords_nonzero = active_coords[~active_coords_zero_mask]
@@ -182,8 +185,7 @@ def calc_losses(s_pred, s_target, s_sigmask_gap, s_sigmask_active, crit, crit_ze
             )
     except Exception as e:
         print("s_pred.shape: {}".format(s_pred.shape))
-        print("s_sigmask_gap.shape: {}".format(s_sigmask_gap.shape))
-        print("s_sigmask_active.shape: {}".format(s_sigmask_active.shape))
+        print("s_in_infill_mask.sum(): {}".format(s_in_infill_mask.sum()))
         raise e
 
     if infill_coords_nonzero.shape[0]:
@@ -231,13 +233,14 @@ def print_losses(losses_acc, n_iter, t_iter, s_pred):
     )
 
 
-def plot_pred(s_pred, s_target, data, vmap, scalefactors, n_iter, detector):
-    coords_packed = [[], [], []]
-    feats = []
-    for i_batch, (coords_pred, feats_pred, coords_target, feats_target) in enumerate(
+def plot_pred(s_pred, s_in, s_target, data, vmap, scalefactors, n_iter, detector):
+    for i_batch, (
+        coords_pred, feats_pred, coords_target, feats_target, coords_in, feats_in
+    ) in enumerate(
         zip(
             *s_pred.decomposed_coordinates_and_features,
-            *s_target.decomposed_coordinates_and_features
+            *s_target.decomposed_coordinates_and_features,
+            *s_in.decomposed_coordinates_and_features
         )
     ):
         if i_batch > 2:
@@ -247,45 +250,75 @@ def plot_pred(s_pred, s_target, data, vmap, scalefactors, n_iter, detector):
         coords_target, feats_target = (
             coords_target.cpu(), feats_target.cpu() * (1 / scalefactors[0])
         )
+        coords_in, feats_in = coords_in.cpu(), feats_in.cpu()
         batch_mask_x, batch_mask_z = data["mask_x"][i_batch], data["mask_z"][i_batch]
 
-        coords_packed, feats = [[], [], []], []
-        coords_packed_predonly, feats_predonly = [[], [], []], []
+        coords_packed, feats_list = [[], [], []], []
+        coords_packed_predonly, feats_list_predonly = [[], [], []], []
+        coords_sigmask_gap_packed = [[], [], []]
+        coords_sigmask_active_packed = [[], [], []]
+        coords_target_packed, feats_list_target = [[], [], []], []
 
         for coord, feat in zip(coords_pred, feats_pred):
-            if feat.item() < 1:
-                continue
             if coord[0].item() in batch_mask_x or coord[2].item() in batch_mask_z:
                 coords_packed[0].append(coord[0].item())
                 coords_packed[1].append(coord[1].item())
                 coords_packed[2].append(coord[2].item())
-                feats.append(feat.item())
+                feats_list.append(feat.item())
             coords_packed_predonly[0].append(coord[0].item())
             coords_packed_predonly[1].append(coord[1].item())
             coords_packed_predonly[2].append(coord[2].item())
-            feats_predonly.append(feat.item())
+            feats_list_predonly.append(feat.item())
         for coord, feat in zip(coords_target, feats_target):
+            coords_target_packed[0].append(coord[0].item())
+            coords_target_packed[1].append(coord[1].item())
+            coords_target_packed[2].append(coord[2].item())
+            feats_list_target.append(feat.item())
             if coord[0].item() not in batch_mask_x and coord[2].item() not in batch_mask_z:
                 coords_packed[0].append(coord[0].item())
                 coords_packed[1].append(coord[1].item())
                 coords_packed[2].append(coord[2].item())
-                feats.append(feat.item())
+                feats_list.append(feat.item())
+
+        for coord, feat in zip(coords_in, feats_in):
+            if feat[-1]:
+                coords_sigmask_gap_packed[0].append(coord[0].item())
+                coords_sigmask_gap_packed[1].append(coord[1].item())
+                coords_sigmask_gap_packed[2].append(coord[2].item())
+            else:
+                coords_sigmask_active_packed[0].append(coord[0].item())
+                coords_sigmask_active_packed[1].append(coord[1].item())
+                coords_sigmask_active_packed[2].append(coord[2].item())
 
         plot_ndlar_voxels_2(
-            coords_packed, feats,
+            coords_packed, feats_list,
             detector,
             vmap["x"], vmap["y"], vmap["z"],
             batch_mask_x, batch_mask_z,
             saveas="tests/iter{}_batch{}_pred.pdf".format(n_iter + 1, i_batch),
-            max_feat=150
+            max_feat=150,
+            signal_mask_gap_coords=coords_sigmask_gap_packed,
+            signal_mask_active_coords=coords_sigmask_active_packed
         )
         plot_ndlar_voxels_2(
-            coords_packed_predonly, feats_predonly,
+            coords_packed_predonly, feats_list_predonly,
             detector,
             vmap["x"], vmap["y"], vmap["z"],
             batch_mask_x, batch_mask_z,
             saveas="tests/iter{}_batch{}_pred_predonly.pdf".format(n_iter + 1, i_batch),
-            max_feat=150
+            max_feat=150,
+            signal_mask_gap_coords=coords_sigmask_gap_packed,
+            signal_mask_active_coords=coords_sigmask_active_packed
+        )
+        plot_ndlar_voxels_2(
+            coords_target_packed, feats_list_target,
+            detector,
+            vmap["x"], vmap["y"], vmap["z"],
+            batch_mask_x, batch_mask_z,
+            saveas="tests/iter{}_batch{}_target.pdf".format(n_iter + 1, i_batch),
+            max_feat=150,
+            signal_mask_gap_coords=coords_sigmask_gap_packed,
+            signal_mask_active_coords=coords_sigmask_active_packed
         )
 
 
