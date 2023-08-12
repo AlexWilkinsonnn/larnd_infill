@@ -1,7 +1,7 @@
 import time, argparse, os
 from collections import defaultdict
 
-import yaml
+import sparse
 import numpy as np
 
 import torch; import torch.optim as optim; import torch.nn as nn
@@ -126,6 +126,17 @@ def main(args):
                     conf.scalefactors,
                     n_iter,
                     conf.detector,
+                    save_dir=os.path.join(conf.checkpoints_dir, conf.name),
+                    save_tensors=True
+                )
+            elif (n_iter + 1) % int(args.plot_iter / conf.batch_size) == 0:
+                plot_pred(
+                    s_pred, s_in, s_target,
+                    data,
+                    conf.vmap,
+                    conf.scalefactors,
+                    n_iter,
+                    conf.detector,
                     save_dir=os.path.join(conf.checkpoints_dir, conf.name)
                 )
 
@@ -134,6 +145,11 @@ def main(args):
                 print("LR {}".format(scheduler.get_lr()))
 
             n_iter += 1
+
+    plot_pred(
+        s_pred, s_in, s_target, data, conf.vmap, conf.scalefactors, n_iter, conf.detector,
+        save_dir=os.path.join(conf.checkpoints_dir, conf.name), save_tensors=True
+    )
 
 def init_loss_func(loss_func):
     if loss_func == "L1Loss":
@@ -217,7 +233,8 @@ def print_losses(losses_acc, n_iter, t_iter, s_pred):
 
 
 def plot_pred(
-    s_pred, s_in, s_target, data, vmap, scalefactors, n_iter, detector, max_evs=2, save_dir="test/"
+    s_pred, s_in, s_target, data, vmap, scalefactors, n_iter, detector,
+    max_evs=2, save_dir="test/", save_tensors=False
 ):
     for i_batch, (
         coords_pred, feats_pred, coords_target, feats_target, coords_in, feats_in
@@ -308,13 +325,51 @@ def plot_pred(
             signal_mask_active_coords=coords_sigmask_active_packed
         )
 
+        if save_tensors:
+            coords_in_packed, feats_in_list = [[], [], []], []
+            for coord, feat in zip(coords_in, feats_in):
+                coords_in_packed[0].append(coord[0].item())
+                coords_in_packed[1].append(coord[1].item())
+                coords_in_packed[2].append(coord[2].item())
+                feats_in_list.append(feat.item())
+            s_in_coo = sparse.COO(
+                coords_in_packed, feats_in,
+                shape=(
+                    vmap["n_voxels"]["x"], vmap["n_voxels"]["y"], vmap["n_voxels"]["z"],
+                    len(feats_in[0])
+                )
+            )
+            sparse.save_npz(
+                os.path.join(save_dir,"iter{}_batch{}_in.npz".format(n_iter + 1, i_batch)),
+                s_in_coo
+            )
+
+            s_pred_coo = sparse.COO(
+                coords_packed_predonly, feats_list_predonly,
+                shape=(vmap["n_voxels"]["x"], vmap["n_voxels"]["y"], vmap["n_voxels"]["z"], 1)
+            )
+            sparse.save_npz(
+                os.path.join(save_dir,"iter{}_batch{}_pred.npz".format(n_iter + 1, i_batch)),
+                s_pred_coo
+            )
+
+            s_target_coo = sparse.COO(
+                coords_target_packed, feats_target,
+                shape=(vmap["n_voxels"]["x"], vmap["n_voxels"]["y"], vmap["n_voxels"]["z"], 1)
+            )
+            sparse.save_npz(
+                os.path.join(save_dir,"iter{}_batch{}_target.npz".format(n_iter + 1, i_batch)),
+                s_target_coo
+            )
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("config")
 
-    parser.add_argument("--valid_iter", type=int, default=1000)
+    parser.add_argument("--plot_iter", type=int, default=1000)
+    parser.add_argument("--valid_iter", type=int, default=5000)
     parser.add_argument("--print_iter", type=int, default=200)
 
     args = parser.parse_args()

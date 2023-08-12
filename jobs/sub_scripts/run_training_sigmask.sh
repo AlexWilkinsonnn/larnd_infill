@@ -13,5 +13,5 @@ echo $CONFIG_FILE
 cd /home/awilkins/larnd_infill/larnd_infill
 source setups/setup.sh
 
-python ME/train/train_sigmask.py --valid_iter 50 --print_iter 10 $CONFIG_FILE
+python ME/train/train_sigmask.py --valid_iter 5000 --print_iter 500 --plot_iter 2000 $CONFIG_FILE
 
