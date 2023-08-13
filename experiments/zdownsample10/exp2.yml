@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_worders: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/zdownsample10"
-name: "config_test"
+name: "exp2"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10/all"
 vmap_path: "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"

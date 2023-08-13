@@ -1,7 +1,7 @@
 import time, argparse, os
 from collections import defaultdict
 
-import sparse
+import yaml
 import numpy as np
 
 import torch; import torch.optim as optim; import torch.nn as nn
@@ -331,36 +331,33 @@ def plot_pred(
                 coords_in_packed[0].append(coord[0].item())
                 coords_in_packed[1].append(coord[1].item())
                 coords_in_packed[2].append(coord[2].item())
-                feats_in_list.append(feat.item())
-            s_in_coo = sparse.COO(
-                coords_in_packed, feats_in,
-                shape=(
-                    vmap["n_voxels"]["x"], vmap["n_voxels"]["y"], vmap["n_voxels"]["z"],
-                    len(feats_in[0])
-                )
-            )
-            sparse.save_npz(
-                os.path.join(save_dir,"iter{}_batch{}_in.npz".format(n_iter + 1, i_batch)),
-                s_in_coo
-            )
+                feats_in_list.append(feat.tolist())
+            
+            in_dict = {
+                tuple(coord.tolist()) : feat.tolist() for coord, feat in zip(coords_in, feats_in)
+            }
+            with open(
+                os.path.join(save_dir,"iter{}_batch{}_in.yml".format(n_iter + 1, i_batch)), "w"
+            ) as f:
+                yaml.dump(in_dict, f)
 
-            s_pred_coo = sparse.COO(
-                coords_packed_predonly, feats_list_predonly,
-                shape=(vmap["n_voxels"]["x"], vmap["n_voxels"]["y"], vmap["n_voxels"]["z"], 1)
-            )
-            sparse.save_npz(
-                os.path.join(save_dir,"iter{}_batch{}_pred.npz".format(n_iter + 1, i_batch)),
-                s_pred_coo
-            )
+            pred_dict = {
+                tuple(coord.tolist()) : feat.tolist()
+                for coord, feat in zip(coords_pred, feats_pred)
+            }
+            with open(
+                os.path.join(save_dir,"iter{}_batch{}_pred.yml".format(n_iter + 1, i_batch)), "w"
+            ) as f:
+                yaml.dump(pred_dict, f)
 
-            s_target_coo = sparse.COO(
-                coords_target_packed, feats_target,
-                shape=(vmap["n_voxels"]["x"], vmap["n_voxels"]["y"], vmap["n_voxels"]["z"], 1)
-            )
-            sparse.save_npz(
-                os.path.join(save_dir,"iter{}_batch{}_target.npz".format(n_iter + 1, i_batch)),
-                s_target_coo
-            )
+            target_dict = {
+                tuple(coord.tolist()) : feat.tolist()
+                for coord, feat in zip(coords_target, feats_target)
+            }
+            with open(
+                os.path.join(save_dir,"iter{}_batch{}_target.yml".format(n_iter + 1, i_batch)), "w"
+            ) as f:
+                yaml.dump(target_dict, f)
 
 
 def parse_arguments():
