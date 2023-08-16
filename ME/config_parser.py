@@ -1,4 +1,4 @@
-import os
+import os, shutil
 from collections import namedtuple
 
 import yaml
@@ -77,8 +77,11 @@ def get_config(config_file):
     else:
         raise ValueError("data_prep_type={} not recognised".format(config_dict["data_prep_type"]))
 
-    if not os.path.exists(os.path.join(config_dict['checkpoints_dir'], config_dict['name'])):
-        os.makedirs(os.path.join(config_dict['checkpoints_dir'], config_dict['name']))
+    checkpoint_dir = os.path.join(config_dict['checkpoints_dir'], config_dict['name'])
+    if not os.path.exists(checkpoint_dir):
+        os.makedirs(checkpoint_dir)
+
+    shutil.copyfile(config_file, os.path.join(checkpoint_dir, os.path.basename(config_file)))
 
     config_namedtuple = namedtuple("config", config_dict)
     config = config_namedtuple(**config_dict)
