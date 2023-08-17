@@ -306,7 +306,8 @@ def plot_ndlar_voxels_2(
     z_scalefactor=1, max_feat=300, min_feat=0, saveas=None,
     tracks=None, signal_mask_active_coords=None, signal_mask_gap_coords=None,
     target_coords=None, target_feats=None,
-    single_proj_pretty=False
+    single_proj_pretty=False,
+    plot_3d=False
 ):
     norm_feats = matplotlib.colors.Normalize(vmin=min_feat, vmax=max_feat)
     if target_coords is None:
@@ -408,37 +409,7 @@ def plot_ndlar_voxels_2(
                 )
 
     # Now draw the signal mask patches
-    if signal_mask_active_coords is not None:
-        for coord_x, coord_y, coord_z in zip(*signal_mask_active_coords):
-            x_bin = x_vmap[coord_x]
-            x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
-            y_bin = y_vmap[coord_y]
-            y_size, y_pos = y_bin[1] - y_bin[0], y_bin[0]
-            z_bin = z_vmap[coord_z]
-            z_size, z_pos = (z_bin[1] - z_bin[0]) * z_scalefactor, z_bin[0]
-
-            c = "green"
-            alpha = 0.3
-
-            pos_xy = (x_pos, y_pos)
-            if pos_xy not in curr_patches_xy:
-                curr_patches_xy.add(pos_xy)
-                ax[0].add_patch(
-                    matplotlib.patches.Rectangle(pos_xy, x_size, y_size, fc=c, alpha=alpha)
-                )
-            pos_xz = (x_pos, z_pos)
-            if pos_xz not in curr_patches_xz:
-                curr_patches_xz.add(pos_xz)
-                ax[1].add_patch(
-                    matplotlib.patches.Rectangle(pos_xz, x_size, z_size, fc=c, alpha=alpha)
-                )
-            pos_zy = (z_pos, y_pos)
-            if pos_zy not in curr_patches_zy:
-                curr_patches_zy.add(pos_zy)
-                ax[2].add_patch(
-                    matplotlib.patches.Rectangle(pos_zy, z_size, y_size, fc=c, alpha=alpha)
-                )
-
+    curr_patches_mask_gap_xy, curr_patches_mask_gap_xz, curr_patches_mask_gap_zy = set(), set(), set()
     if signal_mask_gap_coords is not None:
         for coord_x, coord_y, coord_z in zip(*signal_mask_gap_coords):
             x_bin = x_vmap[coord_x]
@@ -452,23 +423,62 @@ def plot_ndlar_voxels_2(
             alpha = 0.3
 
             pos_xy = (x_pos, y_pos)
-            if pos_xy not in curr_patches_xy:
-                curr_patches_xy.add(pos_xy)
+            if pos_xy not in curr_patches_xy and pos_xy not in curr_patches_mask_gap_xy:
+                curr_patches_mask_gap_xy.add(pos_xy)
                 ax[0].add_patch(
                     matplotlib.patches.Rectangle(pos_xy, x_size, y_size, fc=c, alpha=alpha)
                 )
             pos_xz = (x_pos, z_pos)
-            if pos_xz not in curr_patches_xz:
-                curr_patches_xz.add(pos_xz)
+            if pos_xz not in curr_patches_xz and pos_xz not in curr_patches_mask_gap_xz:
+                curr_patches_mask_gap_xz.add(pos_xz)
                 ax[1].add_patch(
                     matplotlib.patches.Rectangle(pos_xz, x_size, z_size, fc=c, alpha=alpha)
                 )
             pos_zy = (z_pos, y_pos)
-            if pos_zy not in curr_patches_zy:
-                curr_patches_zy.add(pos_zy)
+            if pos_zy not in curr_patches_zy and pos_zy not in curr_patches_mask_gap_zy:
+                curr_patches_mask_gap_zy.add(pos_zy)
                 ax[2].add_patch(
                     matplotlib.patches.Rectangle(pos_zy, z_size, y_size, fc=c, alpha=alpha)
                 )
+
+    curr_patches_mask_active_xy, curr_patches_mask_active_xz, curr_patches_mask_active_zy = set(), set(), set()
+    if signal_mask_active_coords is not None:
+        for coord_x, coord_y, coord_z in zip(*signal_mask_active_coords):
+            x_bin = x_vmap[coord_x]
+            x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
+            y_bin = y_vmap[coord_y]
+            y_size, y_pos = y_bin[1] - y_bin[0], y_bin[0]
+            z_bin = z_vmap[coord_z]
+            z_size, z_pos = (z_bin[1] - z_bin[0]) * z_scalefactor, z_bin[0]
+
+            c = "green"
+            alpha = 0.3
+
+            pos_xy = (x_pos, y_pos)
+            if pos_xy not in curr_patches_xy and pos_xy not in curr_patches_mask_active_xy:
+                if pos_xy in curr_patches_mask_gap_xy:
+                    c = "orange"
+                curr_patches_mask_active_xy.add(pos_xy)
+                ax[0].add_patch(
+                    matplotlib.patches.Rectangle(pos_xy, x_size, y_size, fc=c, alpha=alpha)
+                )
+            pos_xz = (x_pos, z_pos)
+            if pos_xz not in curr_patches_xz and pos_xz not in curr_patches_mask_active_xz:
+                if pos_xz in curr_patches_mask_gap_xz:
+                    c = "orange"
+                curr_patches_mask_active_xz.add(pos_xz)
+                ax[1].add_patch(
+                    matplotlib.patches.Rectangle(pos_xz, x_size, z_size, fc=c, alpha=alpha)
+                )
+            pos_zy = (z_pos, y_pos)
+            if pos_zy not in curr_patches_zy and pos_zy not in curr_patches_mask_active_zy:
+                if pos_zy in curr_patches_mask_gap_zy:
+                    c = "orange"
+                curr_patches_mask_active_zy.add(pos_zy)
+                ax[2].add_patch(
+                    matplotlib.patches.Rectangle(pos_zy, z_size, y_size, fc=c, alpha=alpha)
+                )
+
 
     if tracks is not None:
         for t in tracks:
@@ -495,10 +505,48 @@ def plot_ndlar_voxels_2(
         ax[0].set_xlabel("x", fontsize=18)
         ax[0].set_ylabel("y", fontsize=18)
 
-    fig.tight_layout()
+    # fig.tight_layout()
     if saveas is not None:
         plt.savefig(saveas, bbox_inches="tight")
         plt.close()
     else:
+        plt.show()
+
+    if plot_3d:
+        fig = plt.figure()
+        ax = fig.add_subplot(projection="3d")
+
+        for coord_x, coord_y, coord_z, feat in zip(*coords, feats):
+            x_bin = x_vmap[coord_x]
+            x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
+            y_bin = y_vmap[coord_y]
+            y_size, y_pos = (y_bin[1] - y_bin[0]), y_bin[0]
+            z_bin = z_vmap[coord_z]
+            z_size, z_pos = (z_bin[1] - z_bin[0]) * z_scalefactor, z_bin[0]
+
+            x, y, z = get_cube()
+            x = x * x_size + (x_pos * x_size)
+            y = y * y_size + (y_pos * y_size)
+            z = z * z_size + (z_pos * z_size)
+
+            c = m_feats.to_rgba(feat)
+            alpha = 1.0
+
+            ax.plot_surface(x, z, y, color=c)
+
+        # ax.set_xlim(detector.tpc_borders[-1][0][1], detector.tpc_borders[0][0][0])
+        # ax.set_ylim(detector.tpc_borders[-1][2][0], detector.tpc_borders[0][2][0])
+        # ax.set_zlim(detector.tpc_borders[-1][1][1], detector.tpc_borders[0][1][0])
+        ax.set_xlim(212, 225)
+        ax.set_ylim(12, 18)
+        ax.set_zlim(-30, -45)
+        ax.set_box_aspect((4,8,4))
+        ax.grid(False)
+        ax.xaxis.set_major_locator(plt.MaxNLocator(5))
+        ax.yaxis.set_major_locator(plt.MaxNLocator(5))
+        ax.w_xaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
+        ax.w_yaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
+        ax.w_zaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
+
         plt.show()
 

@@ -6,7 +6,14 @@ import yaml
 from larpixsoft.detector import set_detector_properties
 from larpixsoft.geometry import get_geom_map
 
-from ME.dataset import DataPrepType
+# from ME.dataset import DataPrepType
+# XXX temporary
+from enum import Enum
+class DataPrepType(Enum):
+    STANDARD = 1
+    REFLECTION = 2
+    REFLECTION_SEPARATE_MASKS = 3
+    GAP_DISTANCE = 4
 
 
 defaults = {
@@ -40,11 +47,14 @@ mandatory_fields = {
 }
 
 
-def get_config(config_file):
+def get_config(config_file, overwrite_dict={}, prep_checkpoint_dir=True):
     print("Reading config from {}".format(config_file))
 
     with open(config_file) as f:
         config_dict = yaml.load(f, Loader=yaml.FullLoader)
+
+    for field, val in overwrite_dict.items():
+        config_dict[field] = val
 
     missing_fields = mandatory_fields - set(config_dict.keys())
     if missing_fields:
@@ -77,11 +87,12 @@ def get_config(config_file):
     else:
         raise ValueError("data_prep_type={} not recognised".format(config_dict["data_prep_type"]))
 
-    checkpoint_dir = os.path.join(config_dict['checkpoints_dir'], config_dict['name'])
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
+    if prep_checkpoint_dir:
+        checkpoint_dir = os.path.join(config_dict['checkpoints_dir'], config_dict['name'])
+        if not os.path.exists(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
 
-    shutil.copyfile(config_file, os.path.join(checkpoint_dir, os.path.basename(config_file)))
+        shutil.copyfile(config_file, os.path.join(checkpoint_dir, os.path.basename(config_file)))
 
     config_namedtuple = namedtuple("config", config_dict)
     config = config_namedtuple(**config_dict)
