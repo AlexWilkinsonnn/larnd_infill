@@ -1,5 +1,8 @@
 *.vim
 
+checkpoints
 __pycache__
 test_data
 jobs/logs
+
+!checkpoints/*.py
