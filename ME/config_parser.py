@@ -6,14 +6,7 @@ import yaml
 from larpixsoft.detector import set_detector_properties
 from larpixsoft.geometry import get_geom_map
 
-# from ME.dataset import DataPrepType
-# XXX temporary
-from enum import Enum
-class DataPrepType(Enum):
-    STANDARD = 1
-    REFLECTION = 2
-    REFLECTION_SEPARATE_MASKS = 3
-    GAP_DISTANCE = 4
+from ME.dataset import DataPrepType
 
 
 defaults = {
@@ -33,6 +26,7 @@ mandatory_fields = {
     "scalefactors",
     "n_feats_in", "n_feats_out",
     "max_dataset_size",
+    "max_valid_dataset_size",
     "batch_size",
     "initial_lr",
     "loss_func",
@@ -87,12 +81,30 @@ def get_config(config_file, overwrite_dict={}, prep_checkpoint_dir=True):
     else:
         raise ValueError("data_prep_type={} not recognised".format(config_dict["data_prep_type"]))
 
-    if prep_checkpoint_dir:
-        checkpoint_dir = os.path.join(config_dict['checkpoints_dir'], config_dict['name'])
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
+    config_dict["train_data_path"] = os.path.join(config_dict["data_path"], "train")
+    config_dict["valid_data_path"] = os.path.join(config_dict["data_path"], "valid")
+    if (
+        not os.path.exists(config_dict["train_data_path"]) or
+        not os.path.exists(config_dict["valid_data_path"])
+    ):
+        raise ValueError("train and/or valid subdirs are not in data_path!")
+    del config_dict["data_path"]
 
-        shutil.copyfile(config_file, os.path.join(checkpoint_dir, os.path.basename(config_file)))
+    if prep_checkpoint_dir:
+        config_dict["checkpoint_dir"] = os.path.join(
+            config_dict["checkpoints_dir"], config_dict["name"]
+        )
+        if not os.path.exists(config_dict["checkpoint_dir"]):
+            os.makedirs(config_dict["checkpoint_dir"])
+        else:
+            print(
+                "WARNING: {} already exists, data may be overwritten".format(
+                    config_dict["checkpoint_dir"]
+                )
+            )
+        shutil.copyfile(
+            config_file, os.path.join(config_dict["checkpoint_dir"], os.path.basename(config_file))
+        )
 
     config_namedtuple = namedtuple("config", config_dict)
     config = config_namedtuple(**config_dict)

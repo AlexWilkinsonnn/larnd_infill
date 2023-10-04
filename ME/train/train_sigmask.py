@@ -3,6 +3,7 @@ from collections import defaultdict
 
 import yaml
 import numpy as np
+from tqdm import tqdm
 
 import torch; import torch.optim as optim; import torch.nn as nn
 import MinkowskiEngine as ME
@@ -33,32 +34,44 @@ def main(args):
         final_pruning_threshold=conf.scalefactors[0]
     )
     net.to(device)
-
     print(
         "Model has {:.1f} million parameters".format(
             sum(params.numel() for params in net.parameters()) / 1e6
         )
     )
 
-    dataset = LarndDataset(
-        conf.data_path,
+    collate_fn = CollateCOO(
+        coord_feat_pairs=(("input_coords", "input_feats"), ("target_coords", "target_feats"))
+    )
+    dataset_train = LarndDataset(
+        conf.train_data_path,
         conf.data_prep_type,
         conf.vmap,
         conf.n_feats_in, conf.n_feats_out,
         conf.scalefactors,
         max_dataset_size=conf.max_dataset_size
     )
-
-    collate_fn = CollateCOO(
-        coord_feat_pairs=(("input_coords", "input_feats"), ("target_coords", "target_feats"))
-    )
-
-    dataloader = torch.utils.data.DataLoader(
-        dataset,
+    dataloader_train = torch.utils.data.DataLoader(
+        dataset_train,
         batch_size=conf.batch_size,
         collate_fn=collate_fn,
         num_workers=max(conf.max_num_workers, conf.batch_size),
         shuffle=True
+    )
+    dataset_valid = LarndDataset(
+        conf.valid_data_path,
+        conf.data_prep_type,
+        conf.vmap,
+        conf.n_feats_in, conf.n_feats_out,
+        conf.scalefactors,
+        max_dataset_size=conf.max_valid_dataset_size
+    )
+    dataloader_valid = torch.utils.data.DataLoader(
+        dataset_valid,
+        batch_size=conf.batch_size,
+        collate_fn=collate_fn,
+        num_workers=max(conf.max_num_workers, conf.batch_size),
+        shuffle=True # should I shuffle?
     )
 
     optimizer = optim.SGD(net.parameters(), lr=conf.initial_lr, momentum=0.9, weight_decay=1e-4)
@@ -74,9 +87,10 @@ def main(args):
     n_iter = 0
 
     for epoch in range(conf.epochs):
-        print("Epoch {}".format(epoch))
+        write_log_str(conf, "==== Epoch {} ====".format(epoch))
 
-        for data in dataloader:
+        # Training loop
+        for n_iter_epoch, data in enumerate(dataloader_train):
             optimizer.zero_grad()
 
             try:
@@ -112,44 +126,77 @@ def main(args):
 
             optimizer.step()
 
-            if (n_iter + 1) % int(args.print_iter / conf.batch_size) == 0:
+            if args.print_iter and (n_iter + 1) % args.print_iter == 0:
                 t_iter = time.time() - t0
                 t0 = time.time()
-                print_losses(losses_acc, n_iter, t_iter, s_pred)
+                loss_str = get_print_str(epoch, losses_acc, n_iter_epoch, n_iter, t_iter, s_pred)
+                write_log_str(conf, loss_str)
                 losses_acc = defaultdict(list)
 
-            if (n_iter + 1) % int(args.valid_iter / conf.batch_size) == 0:
+            if args.plot_iter and (n_iter + 1) % args.plot_iter == 0:
                 plot_pred(
                     s_pred, s_in, s_target,
                     data,
                     conf.vmap,
                     conf.scalefactors,
-                    n_iter,
+                    "epoch{}-iter{}".format(epoch, n_iter_epoch + 1),
                     conf.detector,
-                    save_dir=os.path.join(conf.checkpoints_dir, conf.name),
+                    save_dir=conf.checkpoint_dir,
                     save_tensors=True
-                )
-            elif (n_iter + 1) % int(args.plot_iter / conf.batch_size) == 0:
-                plot_pred(
-                    s_pred, s_in, s_target,
-                    data,
-                    conf.vmap,
-                    conf.scalefactors,
-                    n_iter,
-                    conf.detector,
-                    save_dir=os.path.join(conf.checkpoints_dir, conf.name)
                 )
 
             if (n_iter + 1) % int(conf.lr_decay_iter / conf.batch_size) == 0:
                 scheduler.step()
-                print("LR {}".format(scheduler.get_lr()))
+                write_log_str(conf, "LR {}".format(scheduler.get_lr()))
 
             n_iter += 1
 
-    plot_pred(
-        s_pred, s_in, s_target, data, conf.vmap, conf.scalefactors, n_iter, conf.detector,
-        save_dir=os.path.join(conf.checkpoints_dir, conf.name), save_tensors=True
-    )
+        # Save latest network
+        print("Saving net...")
+        torch.save(net.cpu().state_dict(), os.path.join(conf.checkpoint_dir, "latest_net.pth"))
+        net.to(device)
+
+        # Validation loop
+        write_log_str(conf, "== Validation Loop ==")
+        losses_acc_valid = defaultdict(list)
+        for data in tqdm(dataloader_valid, desc="Val Loop"):
+            try:
+                s_in = ME.SparseTensor(
+                    coordinates=data["input_coords"], features=data["input_feats"], device=device
+                )
+                s_target = ME.SparseTensor(
+                    coordinates=data["target_coords"], features=data["target_feats"], device=device
+                )
+            except Exception as e:
+                print("Failed to load in GPU sparse tensors - ", end="")
+                print(e)
+                continue
+
+            with torch.no_grad():
+                s_pred = net(s_in)
+
+            ret = calc_losses(s_pred, s_in, s_target, crit, crit_zeromask)
+            loss_infill_zero, loss_infill_nonzero, loss_active_zero, loss_active_nonzero = ret
+
+            loss_tot = (
+                conf.loss_infill_zero_weight * loss_infill_zero +
+                conf.loss_infill_nonzero_weight * loss_infill_nonzero +
+                conf.loss_active_zero_weight * loss_active_zero +
+                conf.loss_active_nonzero_weight * loss_active_nonzero
+            )
+
+            losses_acc_valid["tot"].append(loss_tot.item())
+            losses_acc_valid["infill_zero"].append(loss_infill_zero.item())
+            losses_acc_valid["infill_nonzero"].append(loss_infill_nonzero.item())
+            losses_acc_valid["active_zero"].append(loss_active_zero.item())
+            losses_acc_valid["active_nonzero"].append(loss_active_nonzero.item())
+
+        loss_str = (
+            "Validation with {} images:\n".format(len(dataset_valid)) +
+			get_loss_str(losses_acc_valid)
+        )
+        write_log_str(conf, loss_str)
+
 
 def init_loss_func(loss_func):
     if loss_func == "L1Loss":
@@ -162,6 +209,14 @@ def init_loss_func(loss_func):
         raise NotImplementedError("loss_func={} not valid".format(loss_func))
 
     return crit, crit_zeromask
+
+
+def write_log_str(conf, log_str, print_str=True):
+    if print_str:
+        print(log_str)
+    with open(os.path.join(conf.checkpoint_dir, "losses.txt"), 'a') as f:
+        f.write(log_str + '\n')
+
 
 def calc_losses(s_pred, s_in, s_target, crit, crit_zeromask):
     s_in_infill_mask = s_in.F[:, -1] == 1
@@ -221,9 +276,15 @@ def calc_losses(s_pred, s_in, s_target, crit, crit_zeromask):
     return loss_infill_zero, loss_infill_nonzero, loss_active_zero, loss_active_nonzero
 
 
-def print_losses(losses_acc, n_iter, t_iter, s_pred):
-    print(
-        "Iter: {}, Time: {:.7f}, last s_pred.shape: {} ".format(n_iter + 1, t_iter, s_pred.shape) +
+def get_print_str(epoch, losses_acc, n_iter, n_iter_tot, t_iter, s_pred):
+    return (
+        "Epoch: {}, Iter: {}, Total Iter: {}, ".format(epoch, n_iter + 1, n_iter_tot + 1) +
+        "Time: {:.7f}, last s_pred.shape: {}\n\t".format(t_iter, s_pred.shape) +
+		get_loss_str(losses_acc)
+    )
+
+def get_loss_str(losses_acc):
+    return (
         "Losses: total={:.7f} ".format(np.mean(losses_acc["tot"])) +
         "infill_zero={:.7f} ".format(np.mean(losses_acc["infill_zero"])) +
         "infill_nonzero={:.7f} ".format(np.mean(losses_acc["infill_nonzero"])) +
@@ -233,7 +294,7 @@ def print_losses(losses_acc, n_iter, t_iter, s_pred):
 
 
 def plot_pred(
-    s_pred, s_in, s_target, data, vmap, scalefactors, n_iter, detector,
+    s_pred, s_in, s_target, data, vmap, scalefactors, save_name_prefix, detector,
     max_evs=2, save_dir="test/", save_tensors=False
 ):
     for i_batch, (
@@ -297,7 +358,7 @@ def plot_pred(
             detector,
             vmap["x"], vmap["y"], vmap["z"],
             batch_mask_x, batch_mask_z,
-            saveas=os.path.join(save_dir, "iter{}_batch{}_pred.pdf".format(n_iter + 1, i_batch)),
+            saveas=os.path.join(save_dir, "{}_batch{}_pred.pdf".format(save_name_prefix, i_batch)),
             max_feat=150,
             signal_mask_gap_coords=coords_sigmask_gap_packed,
             signal_mask_active_coords=coords_sigmask_active_packed
@@ -308,7 +369,7 @@ def plot_pred(
             vmap["x"], vmap["y"], vmap["z"],
             batch_mask_x, batch_mask_z,
             saveas=os.path.join(
-                save_dir, "iter{}_batch{}_pred_predonly.pdf".format(n_iter + 1, i_batch)
+                save_dir, "{}_batch{}_pred_predonly.pdf".format(save_name_prefix, i_batch)
             ),
             max_feat=150,
             signal_mask_gap_coords=coords_sigmask_gap_packed,
@@ -319,7 +380,9 @@ def plot_pred(
             detector,
             vmap["x"], vmap["y"], vmap["z"],
             batch_mask_x, batch_mask_z,
-            saveas=os.path.join(save_dir, "iter{}_batch{}_target.pdf".format(n_iter + 1, i_batch)),
+            saveas=os.path.join(
+                save_dir, "{}_batch{}_target.pdf".format(save_name_prefix, i_batch)
+            ),
             max_feat=150,
             signal_mask_gap_coords=coords_sigmask_gap_packed,
             signal_mask_active_coords=coords_sigmask_active_packed
@@ -332,12 +395,12 @@ def plot_pred(
                 coords_in_packed[1].append(coord[1].item())
                 coords_in_packed[2].append(coord[2].item())
                 feats_in_list.append(feat.tolist())
-            
+
             in_dict = {
                 tuple(coord.tolist()) : feat.tolist() for coord, feat in zip(coords_in, feats_in)
             }
             with open(
-                os.path.join(save_dir,"iter{}_batch{}_in.yml".format(n_iter + 1, i_batch)), "w"
+                os.path.join(save_dir,"{}_batch{}_in.yml".format(save_name_prefix, i_batch)), "w"
             ) as f:
                 yaml.dump(in_dict, f)
 
@@ -346,7 +409,7 @@ def plot_pred(
                 for coord, feat in zip(coords_pred, feats_pred)
             }
             with open(
-                os.path.join(save_dir,"iter{}_batch{}_pred.yml".format(n_iter + 1, i_batch)), "w"
+                os.path.join(save_dir,"{}_batch{}_pred.yml".format(save_name_prefix, i_batch)), "w"
             ) as f:
                 yaml.dump(pred_dict, f)
 
@@ -355,7 +418,8 @@ def plot_pred(
                 for coord, feat in zip(coords_target, feats_target)
             }
             with open(
-                os.path.join(save_dir,"iter{}_batch{}_target.yml".format(n_iter + 1, i_batch)), "w"
+                os.path.join(save_dir,"{}_batch{}_target.yml".format(save_name_prefix, i_batch)),
+                "w"
             ) as f:
                 yaml.dump(target_dict, f)
 
@@ -366,7 +430,6 @@ def parse_arguments():
     parser.add_argument("config")
 
     parser.add_argument("--plot_iter", type=int, default=1000)
-    parser.add_argument("--valid_iter", type=int, default=5000)
     parser.add_argument("--print_iter", type=int, default=200)
 
     args = parser.parse_args()

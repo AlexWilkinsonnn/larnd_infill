@@ -7,13 +7,14 @@ max_num_worders: 4
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/zdownsample10"
 name: "config_test"
 
-data_path: "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10/all"
+data_path: "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10/"
 vmap_path: "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"
 data_prep_type: "reflection"
 scalefactors: [ 0.006666666666666667, 0.25 ] # 1/50, 1/4
 n_feats_in: 2 # adc, num packets stacked
 n_feats_out: 1 # adc
 max_dataset_size: 200
+max_valid_dataset_size: 100
 
 batch_size: 2
 initial_lr: 0.01
