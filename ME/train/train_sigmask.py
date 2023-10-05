@@ -74,6 +74,9 @@ def main(args):
         shuffle=True # should I shuffle?
     )
 
+    args.plot_iter = len(dataset_train) if args.plot_iter == -1 else args.plot_iter
+    args.print_iter = len(dataset_train) if args.print_iter == -1 else args.print_iter
+
     optimizer = optim.SGD(net.parameters(), lr=conf.initial_lr, momentum=0.9, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
     print("LR {}".format(scheduler.get_lr()))
@@ -87,7 +90,7 @@ def main(args):
     n_iter = 0
 
     for epoch in range(conf.epochs):
-        write_log_str(conf, "==== Epoch {} ====".format(epoch))
+        write_log_str(conf.checkpoint_dir, "==== Epoch {} ====".format(epoch))
 
         # Training loop
         for n_iter_epoch, data in enumerate(dataloader_train):
@@ -130,7 +133,7 @@ def main(args):
                 t_iter = time.time() - t0
                 t0 = time.time()
                 loss_str = get_print_str(epoch, losses_acc, n_iter_epoch, n_iter, t_iter, s_pred)
-                write_log_str(conf, loss_str)
+                write_log_str(conf.checkpoint_dir, loss_str)
                 losses_acc = defaultdict(list)
 
             if args.plot_iter and (n_iter + 1) % args.plot_iter == 0:
@@ -145,11 +148,19 @@ def main(args):
                     save_tensors=True
                 )
 
-            if (n_iter + 1) % int(conf.lr_decay_iter / conf.batch_size) == 0:
+            if (
+                args.lr_decay_iter and
+                not isinstance(args.lr_decay_iter, str) and
+                (n_iter + 1) % conf.lr_decay_iter == 0
+            ):
                 scheduler.step()
-                write_log_str(conf, "LR {}".format(scheduler.get_lr()))
+                write_log_str(conf.checkpoint_dir, "LR {}".format(scheduler.get_lr()))
 
             n_iter += 1
+
+        if isinstance(args.lr_decay_iter, str) and args.lr_decay_iter == "epoch":
+            scheduler.step()
+            write_log_str(conf.checkpoint_dir, "LR {}".format(scheduler.get_lr()))
 
         # Save latest network
         print("Saving net...")
@@ -157,7 +168,7 @@ def main(args):
         net.to(device)
 
         # Validation loop
-        write_log_str(conf, "== Validation Loop ==")
+        write_log_str(conf.checkpoint_dir, "== Validation Loop ==")
         losses_acc_valid = defaultdict(list)
         for data in tqdm(dataloader_valid, desc="Val Loop"):
             try:
@@ -195,7 +206,7 @@ def main(args):
             "Validation with {} images:\n".format(len(dataset_valid)) +
 			get_loss_str(losses_acc_valid)
         )
-        write_log_str(conf, loss_str)
+        write_log_str(conf.checkpoint_dir, loss_str)
 
 
 def init_loss_func(loss_func):
@@ -211,7 +222,7 @@ def init_loss_func(loss_func):
     return crit, crit_zeromask
 
 
-def write_log_str(conf, log_str, print_str=True):
+def write_log_str(checkpoint_dir, log_str, print_str=True):
     if print_str:
         print(log_str)
     with open(os.path.join(conf.checkpoint_dir, "losses.txt"), 'a') as f:
@@ -429,8 +440,12 @@ def parse_arguments():
 
     parser.add_argument("config")
 
-    parser.add_argument("--plot_iter", type=int, default=1000)
-    parser.add_argument("--print_iter", type=int, default=200)
+    parser.add_argument(
+        "--plot_iter", type=int, default=1000, help="zero for never, -1 of every epoch"
+    )
+    parser.add_argument(
+        "--print_iter", type=int, default=200, help="zero for never, -1 for every epoch"
+    )
 
     args = parser.parse_args()
 
