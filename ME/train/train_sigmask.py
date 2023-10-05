@@ -225,7 +225,7 @@ def init_loss_func(loss_func):
 def write_log_str(checkpoint_dir, log_str, print_str=True):
     if print_str:
         print(log_str)
-    with open(os.path.join(conf.checkpoint_dir, "losses.txt"), 'a') as f:
+    with open(os.path.join(checkpoint_dir, "losses.txt"), 'a') as f:
         f.write(log_str + '\n')
 
 
