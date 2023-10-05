@@ -1,0 +1,28 @@
+det_props: "/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
+pixel_layout: "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
+
+device: "cuda:0"
+max_num_worders: 4
+
+checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/zdownsample10"
+name: "exp6"
+
+data_path: "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10"
+vmap_path: "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"
+data_prep_type: "reflection"
+scalefactors: [ 0.0021929824561403508, 0.1111111111111111 ] # 1/456, 1/9
+n_feats_in: 2 # adc, num packets stacked
+n_feats_out: 1 # adc
+max_dataset_size: 20000
+max_valid_dataset_size: 2000
+
+batch_size: 4
+initial_lr: 0.01
+loss_func: "L1Loss"
+epochs: 30
+lr_decay_iter: "epoch"
+loss_infill_zero_weight: 50
+loss_infill_nonzero_weight: 1
+loss_active_zero_weight: 0.0001
+loss_active_nonzero_weight: 0.0001
+
