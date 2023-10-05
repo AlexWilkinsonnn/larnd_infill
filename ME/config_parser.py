@@ -105,6 +105,9 @@ def get_config(config_file, overwrite_dict={}, prep_checkpoint_dir=True):
         shutil.copyfile(
             config_file, os.path.join(config_dict["checkpoint_dir"], os.path.basename(config_file))
         )
+        if not os.path.exists(os.path.join(config_dict["checkpoint_dir"], "preds")):
+            os.makedirs(os.path.join(config_dict["checkpoint_dir"], "preds"))
+
 
     config_namedtuple = namedtuple("config", config_dict)
     config = config_namedtuple(**config_dict)

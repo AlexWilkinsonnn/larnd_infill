@@ -74,9 +74,6 @@ def main(args):
         shuffle=True # should I shuffle?
     )
 
-    args.plot_iter = len(dataset_train) if args.plot_iter == -1 else args.plot_iter
-    args.print_iter = len(dataset_train) if args.print_iter == -1 else args.print_iter
-
     optimizer = optim.SGD(net.parameters(), lr=conf.initial_lr, momentum=0.9, weight_decay=1e-4)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
     print("LR {}".format(scheduler.get_lr()))
@@ -129,14 +126,21 @@ def main(args):
 
             optimizer.step()
 
-            if args.print_iter and (n_iter + 1) % args.print_iter == 0:
+            if (
+                args.print_iter and
+                not isinstance(args.print_iter, str) and 
+                (n_iter + 1) % args.print_iter == 0
+            ):
                 t_iter = time.time() - t0
                 t0 = time.time()
                 loss_str = get_print_str(epoch, losses_acc, n_iter_epoch, n_iter, t_iter, s_pred)
                 write_log_str(conf.checkpoint_dir, loss_str)
                 losses_acc = defaultdict(list)
-
-            if args.plot_iter and (n_iter + 1) % args.plot_iter == 0:
+            if (
+                args.plot_iter and
+                not isinstance(args.plot_iter, str) and
+                (n_iter + 1) % args.plot_iter == 0
+            ):
                 plot_pred(
                     s_pred, s_in, s_target,
                     data,
@@ -144,13 +148,12 @@ def main(args):
                     conf.scalefactors,
                     "epoch{}-iter{}".format(epoch, n_iter_epoch + 1),
                     conf.detector,
-                    save_dir=conf.checkpoint_dir,
+                    save_dir=os.path.join(conf.checkpoint_dir, "preds"),
                     save_tensors=True
                 )
-
             if (
-                args.lr_decay_iter and
-                not isinstance(args.lr_decay_iter, str) and
+                conf.lr_decay_iter and
+                not isinstance(conf.lr_decay_iter, str) and
                 (n_iter + 1) % conf.lr_decay_iter == 0
             ):
                 scheduler.step()
@@ -158,9 +161,26 @@ def main(args):
 
             n_iter += 1
 
-        if isinstance(args.lr_decay_iter, str) and args.lr_decay_iter == "epoch":
+        if isinstance(conf.lr_decay_iter, str) and conf.lr_decay_iter == "epoch":
             scheduler.step()
             write_log_str(conf.checkpoint_dir, "LR {}".format(scheduler.get_lr()))
+        if isinstance(args.print_iter, str) and args.print_iter == "epoch":
+            t_iter = time.time() - t0
+            t0 = time.time()
+            loss_str = get_print_str(epoch, losses_acc, n_iter_epoch, n_iter, t_iter, s_pred)
+            write_log_str(conf.checkpoint_dir, loss_str)
+            losses_acc = defaultdict(list)
+        if isinstance(args.plot_iter, str) and args.plot_iter == "epoch":
+            plot_pred(
+                s_pred, s_in, s_target,
+                data,
+                conf.vmap,
+                conf.scalefactors,
+                "epoch{}-end".format(epoch),
+                conf.detector,
+                save_dir=os.path.join(conf.checkpoint_dir, "preds"),
+                save_tensors=True
+            )
 
         # Save latest network
         print("Saving net...")
@@ -207,6 +227,17 @@ def main(args):
 			get_loss_str(losses_acc_valid)
         )
         write_log_str(conf.checkpoint_dir, loss_str)
+        # Plot last prediction of validation loop
+        plot_pred(
+            s_pred, s_in, s_target,
+            data,
+            conf.vmap,
+            conf.scalefactors,
+            "epoch{}-valid".format(epoch),
+            conf.detector,
+            save_dir=os.path.join(conf.checkpoint_dir, "preds"),
+            save_tensors=True
+        )
 
 
 def init_loss_func(loss_func):
@@ -448,6 +479,9 @@ def parse_arguments():
     )
 
     args = parser.parse_args()
+
+    args.plot_iter = "epoch" if args.plot_iter == -1 else args.plot_iter
+    args.print_iter = "epoch" if args.print_iter == -1 else args.print_iter
 
     return args
 
