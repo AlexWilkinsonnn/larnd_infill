@@ -13,6 +13,7 @@ from larpixsoft.detector import set_detector_properties
 from ME.config_parser import get_config
 from ME.dataset import LarndDataset, CollateCOO
 from ME.models.completion_net import CompletionNetSigMask
+from ME.losses import init_loss_func
 from aux import plot_ndlar_voxels_2
 
 # DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
@@ -78,7 +79,7 @@ def main(args):
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
     print("LR {}".format(scheduler.get_lr()))
 
-    crit, crit_zeromask = init_loss_func(conf.loss_func)
+    loss_cls = init_loss_func(conf)
 
     net.train()
 
@@ -107,28 +108,19 @@ def main(args):
 
             s_pred = net(s_in)
 
-            ret = calc_losses(s_pred, s_in, s_target, crit, crit_zeromask)
-            loss_infill_zero, loss_infill_nonzero, loss_active_zero, loss_active_nonzero = ret
-
-            loss_tot = (
-                conf.loss_infill_zero_weight * loss_infill_zero +
-                conf.loss_infill_nonzero_weight * loss_infill_nonzero +
-                conf.loss_active_zero_weight * loss_active_zero +
-                conf.loss_active_nonzero_weight * loss_active_nonzero
-            )
+            loss_tot, losses = loss_cls.calc_loss(s_pred, s_in, s_target)
+            loss_infill_zero, loss_infill_nonzero, loss_active_zero, loss_active_nonzero = losses
 
             loss_tot.backward()
             losses_acc["tot"].append(loss_tot.item())
-            losses_acc["infill_zero"].append(loss_infill_zero.item())
-            losses_acc["infill_nonzero"].append(loss_infill_nonzero.item())
-            losses_acc["active_zero"].append(loss_active_zero.item())
-            losses_acc["active_nonzero"].append(loss_active_nonzero.item())
+            for loss_name, loss in losses.items():
+                losses_acc[loss_name].append(loss.item())
 
             optimizer.step()
 
             if (
                 args.print_iter and
-                not isinstance(args.print_iter, str) and 
+                not isinstance(args.print_iter, str) and
                 (n_iter + 1) % args.print_iter == 0
             ):
                 t_iter = time.time() - t0
@@ -240,82 +232,11 @@ def main(args):
         )
 
 
-def init_loss_func(loss_func):
-    if loss_func == "L1Loss":
-        crit = nn.L1Loss()
-        crit_zeromask = nn.L1Loss(reduction="sum")
-    elif loss_func == "MSELoss":
-        crit = nn.MSELoss()
-        crit_zeromask = nn.MSELoss(reduction="sum")
-    else:
-        raise NotImplementedError("loss_func={} not valid".format(loss_func))
-
-    return crit, crit_zeromask
-
-
 def write_log_str(checkpoint_dir, log_str, print_str=True):
     if print_str:
         print(log_str)
     with open(os.path.join(checkpoint_dir, "losses.txt"), 'a') as f:
         f.write(log_str + '\n')
-
-
-def calc_losses(s_pred, s_in, s_target, crit, crit_zeromask):
-    s_in_infill_mask = s_in.F[:, -1] == 1
-    infill_coords = s_in.C[s_in_infill_mask].type(torch.float)
-    active_coords = s_in.C[~s_in_infill_mask].type(torch.float)
-
-    infill_coords_zero_mask = s_target.features_at_coordinates(infill_coords)[:, 0] == 0
-    infill_coords_zero = infill_coords[infill_coords_zero_mask]
-    infill_coords_nonzero = infill_coords[~infill_coords_zero_mask]
-
-    active_coords_zero_mask = s_target.features_at_coordinates(active_coords)[:, 0] == 0
-    active_coords_zero = active_coords[active_coords_zero_mask]
-    active_coords_nonzero = active_coords[~active_coords_zero_mask]
-
-    if infill_coords_zero.shape[0]:
-        loss_infill_zero = crit(
-            s_pred.features_at_coordinates(infill_coords_zero).squeeze(),
-            s_target.features_at_coordinates(infill_coords_zero).squeeze()
-        )
-    else:
-        loss_infill_zero = crit_zeromask(
-            s_pred.features_at_coordinates(infill_coords_zero).squeeze(),
-            s_target.features_at_coordinates(infill_coords_zero).squeeze()
-        )
-
-    if infill_coords_nonzero.shape[0]:
-        loss_infill_nonzero = crit(
-            s_pred.features_at_coordinates(infill_coords_nonzero).squeeze(),
-            s_target.features_at_coordinates(infill_coords_nonzero).squeeze()
-        )
-    else:
-        loss_infill_nonzero = crit_zeromask(
-            s_pred.features_at_coordinates(infill_coords_nonzero).squeeze(),
-            s_target.features_at_coordinates(infill_coords_nonzero).squeeze()
-        )
-    if active_coords_zero.shape[0]:
-        loss_active_zero = crit(
-            s_pred.features_at_coordinates(active_coords_zero).squeeze(),
-            s_target.features_at_coordinates(active_coords_zero).squeeze()
-        )
-    else:
-        loss_active_zero = crit_zeromask(
-            s_pred.features_at_coordinates(active_coords_zero).squeeze(),
-            s_target.features_at_coordinates(active_coords_zero).squeeze()
-        )
-    if active_coords_nonzero.shape[0]:
-        loss_active_nonzero = crit(
-            s_pred.features_at_coordinates(active_coords_nonzero).squeeze(),
-            s_target.features_at_coordinates(active_coords_nonzero).squeeze()
-        )
-    else:
-        loss_active_nonzero = crit_zeromask(
-            s_pred.features_at_coordinates(active_coords_nonzero).squeeze(),
-            s_target.features_at_coordinates(active_coords_nonzero).squeeze()
-        )
-
-    return loss_infill_zero, loss_infill_nonzero, loss_active_zero, loss_active_nonzero
 
 
 def get_print_str(epoch, losses_acc, n_iter, n_iter_tot, t_iter, s_pred):
@@ -326,13 +247,12 @@ def get_print_str(epoch, losses_acc, n_iter, n_iter_tot, t_iter, s_pred):
     )
 
 def get_loss_str(losses_acc):
-    return (
-        "Losses: total={:.7f} ".format(np.mean(losses_acc["tot"])) +
-        "infill_zero={:.7f} ".format(np.mean(losses_acc["infill_zero"])) +
-        "infill_nonzero={:.7f} ".format(np.mean(losses_acc["infill_nonzero"])) +
-        "active_zero={:.7f} ".format(np.mean(losses_acc["active_zero"])) +
-        "active_nonzero={:.7f} ".format(np.mean(losses_acc["active_nonzero"]))
-    )
+    loss_str = "Losses: total={:.7f}".format(np.mean(losses_acc["tot"]))
+    for loss_name, loss in sorted(losses_acc.items()):
+        if loss_name == "tot":
+            continue
+        loss_str += " " + loss_name + "={:.7f}".format(np.mean(loss))
+    return loss_str
 
 
 def plot_pred(

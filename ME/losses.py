@@ -1,35 +1,128 @@
 import MinkowskiEngine as ME
-import torch
+import torch; import torch.nn as nn
 
 
-def make_infill_mask(s_pred, s_target, x_mask, z_mask):
-    all_coords = ME.MinkowskiUnion()(s_pred, s_target).C.type(torch.int)
+def init_loss_func(conf):
+    if conf.loss_func == "PixelWise_L1Loss":
+        loss = PixelWise(
+            "L1Loss",
+            conf.loss_infill_zero_weight, conf.loss_infill_nonzero_weight,
+            conf.loss_active_zero_weight, conf.loss_active_nonzero_weight
+        )
+    elif loss_func == "PixelWise_MSELoss":
+        loss = PixelWise(
+            "MSELoss",
+            conf.loss_infill_zero_weight, conf.loss_infill_nonzero_weight,
+            conf.loss_active_zero_weight, conf.loss_active_nonzero_weight
+        )
+    else:
+        raise NotImplementedError("loss_func={} not valid".format(conf.loss_func))
 
-    infill_mask = torch.zeros(all_coords.shape[0], dtype=torch.bool)
-    for i_coord, coord in enumerate(all_coords):
-        b_idx = coord[0].item()
-        if coord[1].item() in x_mask[b_idx] or coord[3].item() in z_mask[b_idx]:
-            infill_mask[i_coord] = True
-
-    all_coords = all_coords.type(torch.float)
-
-    infill_coords = all_coords[infill_mask]
-    infill_coords_nonzero_mask = s_target.features_at_coordinates(infill_coords)[:, 0] != 0
-    infill_coords_nonzero = infill_coords[infill_coords_nonzero_mask]
-    infill_coords_zero = infill_coords[~infill_coords_nonzero_mask]
-
-    active_coords = all_coords[~infill_mask]
-    active_coords_nonzero_mask = s_target.features_at_coordinates(active_coords)[:, 0] != 0
-    active_coords_nonzero = active_coords[active_coords_nonzero_mask]
-    active_coords_zero = active_coords[~active_coords_nonzero_mask]
+    return loss
 
 
-def losses_gen_mask(
-    s_pred, s_target, x_mask, z_mask, crit, crit_zeromask,
-    loss_infill_zero=False, loss_infill_nonzero=False,
-    loss_active_zero=False, loss_active_nonzero=False,
-    loss_active_n_points=False, loss_infill_n_points=False,
-    crit_n_points=None, crit_n_points_zeromask=None
-):
-    pass
+class PixelWise:
+    def __init__(
+        self,
+        loss_func,
+        lambda_loss_infill_zero, lambda_loss_infill_nonzero,
+        lambda_loss_active_zero, lambda_loss_active_nonzero
+    ):
+        if loss_func == "L1Loss":
+            self.crit = nn.L1Loss()
+            self.crit_sumreduction = nn.L1Loss(reduction="sum")
+        elif loss_func == "MSELoss":
+            self.crit = nn.MSELoss()
+            self.crit_sumreduction = nn.MSELoss(reduction="sum")
+        else:
+            raise NotImplementedError("loss_func={} not valid".format(loss_func))
+
+        self.lambda_loss_infill_zero = lambda_loss_infill_zero
+        self.lambda_loss_infill_nonzero = lambda_loss_infill_nonzero
+        self.lambda_loss_active_zero = lambda_loss_active_zero
+        self.lambda_loss_active_nonzero = lambda_loss_active_nonzero
+
+    def calc_loss(self, s_pred, s_in, s_target):
+        ret = self._get_infill_active_coords(s_in, s_target)
+        infill_coords_zero, infill_coords_nonzero, active_coords_zero, active_coords_nonzero = ret
+
+        loss_infill_zero = self._get_loss_at_coords(s_pred, s_target, infill_coords_zero)
+        loss_infill_nonzero = self._get_loss_at_coords(s_pred, s_target, infill_coords_nonzero)
+        loss_active_zero = self._get_loss_at_coords(s_pred, s_target, active_coords_zero)
+        loss_active_nonzero = self._get_loss_at_coords(s_pred, s_target, active_coords_nonzero)
+
+        loss_tot = (
+            self.lambda_loss_infill_zero * loss_infill_zero +
+            self.lambda_loss_infill_nonzero * loss_infill_nonzero +
+            self.lambda_loss_active_zero * loss_active_zero +
+            self.lambda_loss_active_nonzero * loss_active_nonzero
+        )
+
+        return (
+            loss_tot,
+            {
+                "infill_zero" : loss_infill_zero, "infill_nonzero" : loss_infill_nonzero,
+                "active_zero" : loss_active_zero, "active_nonzero" : loss_active_nonzero
+            }
+        )
+
+    def _get_infill_active_coords(self, s_in, s_target):
+        s_in_infill_mask = s_in.F[:, -1] == 1
+        infill_coords = s_in.C[s_in_infill_mask].type(torch.float)
+        active_coords = s_in.C[~s_in_infill_mask].type(torch.float)
+
+        infill_coords_zero_mask = s_target.features_at_coordinates(infill_coords)[:, 0] == 0
+        infill_coords_zero = infill_coords[infill_coords_zero_mask]
+        infill_coords_nonzero = infill_coords[~infill_coords_zero_mask]
+
+        active_coords_zero_mask = s_target.features_at_coordinates(active_coords)[:, 0] == 0
+        active_coords_zero = active_coords[active_coords_zero_mask]
+        active_coords_nonzero = active_coords[~active_coords_zero_mask]
+
+        return infill_coords_zero, infill_coords_nonzero, active_coords_zero, active_coords_nonzero
+
+    def _get_loss_at_coords(self, s_pred, s_target, coords):
+        if coords.shape[0]:
+            loss = self.crit(
+                s_pred.features_at_coordinates(coords).squeeze(),
+                s_target.features_at_coordinates(coords).squeeze()
+            )
+        else:
+            loss = self.crit_sumreduction(
+                s_pred.features_at_coordinates(coords).squeeze(),
+                s_target.features_at_coordinates(coords).squeeze()
+            )
+
+        return loss
+
+# def make_infill_mask(s_pred, s_target, x_mask, z_mask):
+#     all_coords = ME.MinkowskiUnion()(s_pred, s_target).C.type(torch.int)
+
+#     infill_mask = torch.zeros(all_coords.shape[0], dtype=torch.bool)
+#     for i_coord, coord in enumerate(all_coords):
+#         b_idx = coord[0].item()
+#         if coord[1].item() in x_mask[b_idx] or coord[3].item() in z_mask[b_idx]:
+#             infill_mask[i_coord] = True
+
+#     all_coords = all_coords.type(torch.float)
+
+#     infill_coords = all_coords[infill_mask]
+#     infill_coords_nonzero_mask = s_target.features_at_coordinates(infill_coords)[:, 0] != 0
+#     infill_coords_nonzero = infill_coords[infill_coords_nonzero_mask]
+#     infill_coords_zero = infill_coords[~infill_coords_nonzero_mask]
+
+#     active_coords = all_coords[~infill_mask]
+#     active_coords_nonzero_mask = s_target.features_at_coordinates(active_coords)[:, 0] != 0
+#     active_coords_nonzero = active_coords[active_coords_nonzero_mask]
+#     active_coords_zero = active_coords[~active_coords_nonzero_mask]
+
+
+# def losses_gen_mask(
+#     s_pred, s_target, x_mask, z_mask, crit, crit_zeromask,
+#     loss_infill_zero=False, loss_infill_nonzero=False,
+#     loss_active_zero=False, loss_active_nonzero=False,
+#     loss_active_n_points=False, loss_infill_n_points=False,
+#     crit_n_points=None, crit_n_points_zeromask=None
+# ):
+#     pass
 

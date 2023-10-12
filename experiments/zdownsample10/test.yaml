@@ -18,7 +18,7 @@ max_valid_dataset_size: 100
 
 batch_size: 2
 initial_lr: 0.01
-loss_func: "L1Loss"
+loss_func: "PixelWise_L1Loss"
 epochs: 20
 lr_decay_iter: 200
 loss_infill_zero_weight: 1
