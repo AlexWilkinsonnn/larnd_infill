@@ -153,7 +153,6 @@ class LarndDataset(torch.utils.data.Dataset):
                 data["xyz"], data["zxy"],
                 unmasked_coords, unmasked_feats, masked_coords, masked_feats, x_gaps, z_gaps
             )
-
         elif self.prep_type == DataPrepType.GAP_DISTANCE:
             ret = self._getitem_gap_distance(
                 unmasked_coords, unmasked_feats, masked_coords, masked_feats, x_gaps, z_gaps
@@ -299,12 +298,6 @@ class LarndDataset(torch.utils.data.Dataset):
         )
         signal_mask_gap_feats[:, -1] = 1
 
-        # input_coords_set = { (coord[0], coord[1], coord[2]) for coord in input_coords }
-        # signal_mask_gap_coords_set = { (coord[0], coord[1], coord[2]) for coord in signal_mask_gap_coords }
-        # signal_mask_active_coords_set = { (coord[0], coord[1], coord[2]) for coord in signal_mask_active_coords }
-        # print(len(input_coords_set.intersection(signal_mask_gap_coords_set)))
-        # print(len(input_coords_set.intersection(signal_mask_active_coords_set)))
-
         if self.prep_type == DataPrepType.REFLECTION:
             input_coords = np.concatenate(
                 (input_coords, signal_mask_active_coords, signal_mask_gap_coords)
@@ -389,12 +382,12 @@ class LarndDataset(torch.utils.data.Dataset):
             gap_start = gap_loc
             while gap_start in gaps_set:
                 gap_start -= 1
-            gap_pos_rflct_coord[gap_loc] = gap_start + 1
+            gap_pos_rflct_coord[gap_loc] = gap_start
 
             gap_end = gap_loc
             while gap_end in gaps_set:
                 gap_end += 1
-            gap_neg_rflct_coord[gap_loc] = gap_end - 1
+            gap_neg_rflct_coord[gap_loc] = gap_end
 
         return gaps_set, gap_pos_rflct_coord, gap_neg_rflct_coord
 
@@ -426,7 +419,6 @@ class LarndDataset(torch.utils.data.Dataset):
                                         2 * reflect_z - coord_z
                                     )
                                 )
-
             # Needs to be reflected in the negative x_direction
             elif coord_x - (self.x_gap_size + 1) in x_gaps_set:
                 reflect_x = x_gap_neg_rflct_coord[coord_x - (self.x_gap_size + 1)]
@@ -462,7 +454,6 @@ class LarndDataset(torch.utils.data.Dataset):
                 # Packets might skip a z bin (pixels are waiting to self trigger) so allow wiggle
                 reflect_z_max = z_gap_pos_rflct_coord[coord_z + self.z_gap_size + 1]
                 for reflect_z in range(reflect_z_max - wiggle, reflect_z_max + 1):
-
                     # No packets at pixel next to gap
                     if reflect_z not in coordszxy_feats:
                         continue
@@ -486,7 +477,6 @@ class LarndDataset(torch.utils.data.Dataset):
                 # Packets might skip a z bin (pixels are waiting to self trigger) so allow wiggle
                 reflect_z_min = z_gap_neg_rflct_coord[coord_z - (self.z_gap_size + 1)]
                 for reflect_z in range(reflect_z_min, reflect_z_min + wiggle + 1):
-
                     # No packets at pixel next to gap
                     if reflect_z not in coordszxy_feats:
                         continue
@@ -617,25 +607,18 @@ class DataPrepType(Enum):
 
 # Testing
 if __name__ == "__main__":
-    data_path = "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10/all"
+    train_data_path = "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10/train"
     vmap_path = "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"
     with open(vmap_path, "r") as f:
         vmap = yaml.load(f, Loader=yaml.FullLoader)
 
-    dataset = LarndDataset(
-        data_path, DataPrepType.GAP_DISTANCE, vmap, 2, 1, [1 / 300, 1 / 5],
-        max_dataset_size=200, seed=1
-    )
-
-    # collate_fn = CollateCOO(
-    #     coord_feat_pairs=(
-    #         ("input_coords", "input_feats"), ("target_coords", "target_feats"),
-    #         ("signal_mask_active_coords", "signal_mask_active_feats"),
-    #         ("signal_mask_gap_coords", "signal_mask_gap_feats")
-    #     )
-    # )
     collate_fn = CollateCOO(
         coord_feat_pairs=(("input_coords", "input_feats"), ("target_coords", "target_feats"))
+    )
+    scalefactors = [1 / 300, 1 / 5]
+    dataset = LarndDataset(
+        train_data_path, DataPrepType.REFLECTION, vmap, 2, 1, scalefactors,
+        max_dataset_size=20, seed=1
     )
 
     b_size = 1
@@ -643,9 +626,18 @@ if __name__ == "__main__":
         dataset, batch_size=b_size, collate_fn=collate_fn, num_workers=0
     )
 
+    from larpixsoft.detector import set_detector_properties
+    from larpixsoft.geometry import get_geom_map
+    det_props = "/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
+    pixel_layout = (
+        "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
+    )
+    detector = set_detector_properties(det_props, pixel_layout, pedestal=74)
+    geometry = get_geom_map(pixel_layout)
+
     dataloader_itr = iter(dataloader)
     s = time.time()
-    num_iters = 5
+    num_iters = 4
     for i in range(num_iters):
         batch = next(dataloader_itr)
     e = time.time()
@@ -662,12 +654,47 @@ if __name__ == "__main__":
     # print(batch["signal_mask_active_coords"].shape, batch["signal_mask_active_feats"].shape)
     # print(batch["signal_mask_gap_coords"].shape, batch["signal_mask_gap_feats"].shape)
 
-    from larpixsoft.detector import set_detector_properties
-    det_props = "/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
-    pixel_layout = (
-        "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
-    )
-    detector = set_detector_properties(det_props, pixel_layout, pedestal=74)
+    s_in = ME.SparseTensor(coordinates=batch["input_coords"], features=batch["input_feats"])
+    s_target = ME.SparseTensor(coordinates=batch["target_coords"], features=batch["target_feats"])
+
+    for i_batch, (coords_target, feats_target, coords_in, feats_in) in enumerate(
+        zip(
+            *s_target.decomposed_coordinates_and_features,
+            *s_in.decomposed_coordinates_and_features
+        )
+    ):
+        batch_mask_x, batch_mask_z = batch["mask_x"][i_batch], batch["mask_z"][i_batch]
+
+        coords_packed, feats_list = [[], [], []], []
+        coords_sigmask_gap_packed = [[], [], []]
+        coords_sigmask_active_packed = [[], [], []]
+        coords_target_packed, feats_list_target = [[], [], []], []
+
+        for coord, feat in zip(coords_target, feats_target):
+            coords_packed[0].append(coord[0].item())
+            coords_packed[1].append(coord[1].item())
+            coords_packed[2].append(coord[2].item())
+            feats_list.append(feat[0].item())
+        for coord, feat in zip(coords_in, feats_in):
+            if feat[-1]:
+                coords_sigmask_gap_packed[0].append(coord[0].item())
+                coords_sigmask_gap_packed[1].append(coord[1].item())
+                coords_sigmask_gap_packed[2].append(coord[2].item())
+            else:
+                coords_sigmask_active_packed[0].append(coord[0].item())
+                coords_sigmask_active_packed[1].append(coord[1].item())
+                coords_sigmask_active_packed[2].append(coord[2].item())
+
+        from aux import plot_ndlar_voxels_2
+        plot_ndlar_voxels_2(
+            coords_packed, feats_list,
+            detector,
+            vmap["x"], vmap["y"], vmap["z"],
+            batch_mask_x, batch_mask_z,
+            max_feat=1,
+            signal_mask_gap_coords=coords_sigmask_gap_packed,
+            signal_mask_active_coords=coords_sigmask_active_packed
+        )
 
     # coords_packed_sigmask_active = [[], [], []]
     # for coord in batch["signal_mask_active_coords"]:
