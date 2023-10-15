@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_worders: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/zdownsample10"
-name: "exp14"
+name: "exp15"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10"
 vmap_path: "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"
@@ -22,10 +22,10 @@ initial_lr: 0.001
 loss_func: "GapWise_L1Loss"
 epochs: 30
 lr_decay_iter: "epoch"
-loss_infill_zero_weight: 1
-loss_infill_nonzero_weight: 1
-loss_x_gap_planes_adc_weight: 0.01
-loss_x_gap_planes_npixel_weight: 0.1
-loss_z_gap_planes_adc_weight: 0.01
-loss_z_gap_planes_npixel_weight: 0.1
+loss_infill_zero_weight: 0.001
+loss_infill_nonzero_weight: 0.001
+loss_x_gap_planes_adc_weight: 0.001
+loss_x_gap_planes_npixel_weight: 0.001
+loss_z_gap_planes_adc_weight: 0.001
+loss_z_gap_planes_npixel_weight: 0.001
 
