@@ -197,7 +197,7 @@ def main(args):
             with torch.no_grad():
                 s_pred = net(s_in)
 
-            loss_tot, losses = loss_cls.calc_loss(s_pred, s_in, s_target)
+            loss_tot, losses = loss_cls.calc_loss(s_pred, s_in, s_target, data)
 
             losses_acc_valid["tot"].append(loss_tot.item())
             for loss_name, loss in losses.items():
