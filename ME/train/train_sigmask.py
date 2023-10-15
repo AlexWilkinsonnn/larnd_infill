@@ -32,7 +32,7 @@ def main(args):
     net = CompletionNetSigMask(
         (conf.vmap["n_voxels"]["x"], conf.vmap["n_voxels"]["y"], conf.vmap["n_voxels"]["z"]),
         in_nchannel=conf.n_feats_in + 1, out_nchannel=conf.n_feats_out,
-        final_pruning_threshold=conf.scalefactors[0]
+        final_pruning_threshold=conf.adc_threshold
     )
     net.to(device)
     print(
@@ -108,8 +108,7 @@ def main(args):
 
             s_pred = net(s_in)
 
-            loss_tot, losses = loss_cls.calc_loss(s_pred, s_in, s_target)
-            loss_infill_zero, loss_infill_nonzero, loss_active_zero, loss_active_nonzero = losses
+            loss_tot, losses = loss_cls.calc_loss(s_pred, s_in, s_target, data)
 
             loss_tot.backward()
             losses_acc["tot"].append(loss_tot.item())
@@ -198,21 +197,11 @@ def main(args):
             with torch.no_grad():
                 s_pred = net(s_in)
 
-            ret = calc_losses(s_pred, s_in, s_target, crit, crit_zeromask)
-            loss_infill_zero, loss_infill_nonzero, loss_active_zero, loss_active_nonzero = ret
-
-            loss_tot = (
-                conf.loss_infill_zero_weight * loss_infill_zero +
-                conf.loss_infill_nonzero_weight * loss_infill_nonzero +
-                conf.loss_active_zero_weight * loss_active_zero +
-                conf.loss_active_nonzero_weight * loss_active_nonzero
-            )
+            loss_tot, losses = loss_cls.calc_loss(s_pred, s_in, s_target)
 
             losses_acc_valid["tot"].append(loss_tot.item())
-            losses_acc_valid["infill_zero"].append(loss_infill_zero.item())
-            losses_acc_valid["infill_nonzero"].append(loss_infill_nonzero.item())
-            losses_acc_valid["active_zero"].append(loss_active_zero.item())
-            losses_acc_valid["active_nonzero"].append(loss_active_nonzero.item())
+            for loss_name, loss in losses.items():
+                losses_acc[loss_name].append(loss.item())
 
         loss_str = (
             "Validation with {} images:\n".format(len(dataset_valid)) +

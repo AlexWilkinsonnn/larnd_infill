@@ -18,6 +18,7 @@ defaults = {
     ),
     "device" : "cuda:0",
     "max_num_workers" : 4,
+    "adc_threshold" : 1
 }
 
 mandatory_fields = {
@@ -32,10 +33,6 @@ mandatory_fields = {
     "loss_func",
     "epochs",
     "lr_decay_iter",
-    "loss_infill_zero_weight",
-    "loss_infill_nonzero_weight",
-    "loss_active_zero_weight",
-    "loss_active_nonzero_weight",
     "checkpoints_dir",
     "name"
 }
@@ -89,6 +86,8 @@ def get_config(config_file, overwrite_dict={}, prep_checkpoint_dir=True):
     ):
         raise ValueError("train and/or valid subdirs are not in data_path!")
     del config_dict["data_path"]
+
+    config_dict["adc_threshold"] = config_dict["adc_threshold"] * config_dict["scalefactors"][0]
 
     if prep_checkpoint_dir:
         config_dict["checkpoint_dir"] = os.path.join(

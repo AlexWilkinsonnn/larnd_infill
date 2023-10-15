@@ -13,16 +13,20 @@ data_prep_type: "reflection"
 scalefactors: [ 0.006666666666666667, 0.25 ] # 1/50, 1/4
 n_feats_in: 2 # adc, num packets stacked
 n_feats_out: 1 # adc
-max_dataset_size: 200
+max_dataset_size: 1000
 max_valid_dataset_size: 100
+adc_threshold: 1 # prune all predicted adc <= 1 in final layer
 
-batch_size: 2
+batch_size: 1
 initial_lr: 0.01
-loss_func: "PixelWise_L1Loss"
+loss_func: "GapWise_L1Loss"
+
 epochs: 20
 lr_decay_iter: 200
 loss_infill_zero_weight: 1
 loss_infill_nonzero_weight: 1
-loss_active_zero_weight: 0.0001
-loss_active_nonzero_weight: 0.0001
+loss_x_gap_planes_adc_weight: 0.001
+loss_x_gap_planes_npixel_weight: 0.001
+loss_z_gap_planes_adc_weight: 0.001
+loss_z_gap_planes_npixel_weight: 0.001
 
