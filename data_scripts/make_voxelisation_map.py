@@ -23,7 +23,10 @@ def main(args):
         z_step = detector.time_sampling * detector.vdrift
     elif args.preset == 1:
         x_step, y_step = detector.pixel_pitch, detector.pixel_pitch
-        z_step =  detector.vdrift
+        z_step = detector.vdrift
+    elif args.preset == 2:
+        x_step, y_step = detector.pixel_pitch, detector.pixel_pitch
+        z_step = 4 * detector.vdrift
     else:
         raise ValueError("No preset={}".format(args.preset))
 
@@ -161,7 +164,14 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("out_path", type=str)
-    parser.add_argument("preset", type=int, help="0 (no downsampling)|1 (downsample z by 10)")
+    parser.add_argument(
+        "preset", type=int,
+        help=(
+            "0 (no downsampling)|"
+            "1 (downsample z by 10)|"
+            "2 (downsample z by 40 s.t. (x,y) and z are roughly the same spatial size)"
+        )
+    )
 
     args = parser.parse_args()
 
