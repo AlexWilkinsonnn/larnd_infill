@@ -20,7 +20,7 @@ echo $VMAP_PATH
 # OUTPUT_DIR=$(echo $OUTPUT_DIR | sed 's#[^/]$#&/#')
 
 cd /home/awilkins/larnd_infill/larnd_infill
-source setup.sh
+source setups/setup.sh
 
 for file in ${INPUT_DIR%/}/*; do
   echo $file
