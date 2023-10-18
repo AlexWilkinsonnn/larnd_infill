@@ -40,30 +40,44 @@ class PixelWise(CustomLoss):
         self.lambda_loss_infill_nonzero = conf.loss_infill_nonzero_weight
         self.lambda_loss_active_zero = conf.loss_active_zero_weight
         self.lambda_loss_active_nonzero = conf.loss_active_nonzero_weight
+        self.lambda_loss_infill = conf.loss_infill_weight
+        self.lambda_loss_active = conf.loss_active_weight
 
     def calc_loss(self, s_pred, s_in, s_target, data):
-        ret = self._get_infill_active_coords(s_in, s_target)
-        infill_coords_zero, infill_coords_nonzero, active_coords_zero, active_coords_nonzero = ret
+        (
+            infill_coords, active_coords,
+            infill_coords_zero, infill_coords_nonzero,
+            active_coords_zero, active_coords_nonzero
+        ) = self._get_infill_active_coords(s_in, s_target)
+        
+        loss_tot = 0.0
+        losses = {}
+        if self.lambda_loss_infill_zero:
+            loss_infill_zero = self._get_loss_at_coords(s_pred, s_target, infill_coords_zero)
+            loss_tot += self.lambda_loss_infill_zero * loss_infill_zero
+            losses["infill_zero"] = loss_infill_zero
+        if self.lambda_loss_infill_nonzero:
+            loss_infill_nonzero = self._get_loss_at_coords(s_pred, s_target, infill_coords_nonzero)
+            loss_tot += self.lambda_loss_infill_nonzero * loss_infill_nonzero
+            losses["infill_nonzero"] = loss_infill_nonzero
+        if self.lambda_loss_active_zero:
+            loss_active_zero = self._get_loss_at_coords(s_pred, s_target, active_coords_zero)
+            loss_tot += self.lambda_loss_active_zero * loss_active_zero
+            losses["active_zero"] = loss_active_zero
+        if self.lambda_loss_active_nonzero:
+            loss_active_nonzero = self._get_loss_at_coords(s_pred, s_target, active_coords_nonzero)
+            loss_tot += self.lambda_loss_active_nonzero * loss_active_nonzero
+            losses["active_nonzero"] = loss_active_nonzero
+        if self.lambda_loss_infill:
+            loss_infill = self._get_loss_at_coords(s_pred, s_target, infill_coords)
+            loss_tot += self.lambda_loss_infill * loss_infill
+            losses["infill"] = loss_infill
+        if self.lambda_loss_active:
+            loss_active = self._get_loss_at_coords(s_pred, s_target, active_coords)
+            loss_tot += self.lambda_loss_active * loss_active
+            losses["active"] = loss_active
 
-        loss_infill_zero = self._get_loss_at_coords(s_pred, s_target, infill_coords_zero)
-        loss_infill_nonzero = self._get_loss_at_coords(s_pred, s_target, infill_coords_nonzero)
-        loss_active_zero = self._get_loss_at_coords(s_pred, s_target, active_coords_zero)
-        loss_active_nonzero = self._get_loss_at_coords(s_pred, s_target, active_coords_nonzero)
-
-        loss_tot = (
-            self.lambda_loss_infill_zero * loss_infill_zero +
-            self.lambda_loss_infill_nonzero * loss_infill_nonzero +
-            self.lambda_loss_active_zero * loss_active_zero +
-            self.lambda_loss_active_nonzero * loss_active_nonzero
-        )
-
-        return (
-            loss_tot,
-            {
-                "infill_zero" : loss_infill_zero, "infill_nonzero" : loss_infill_nonzero,
-                "active_zero" : loss_active_zero, "active_nonzero" : loss_active_nonzero
-            }
-        )
+        return loss_tot, losses
 
     def _get_infill_active_coords(self, s_in, s_target):
         s_in_infill_mask = s_in.F[:, -1] == 1
@@ -78,7 +92,11 @@ class PixelWise(CustomLoss):
         active_coords_zero = active_coords[active_coords_zero_mask]
         active_coords_nonzero = active_coords[~active_coords_zero_mask]
 
-        return infill_coords_zero, infill_coords_nonzero, active_coords_zero, active_coords_nonzero
+        return (
+            infill_coords, active_coords,
+            infill_coords_zero, infill_coords_nonzero,
+            active_coords_zero, active_coords_nonzero
+        )
 
     def _get_loss_at_coords(self, s_pred, s_target, coords):
         if coords.shape[0]:
