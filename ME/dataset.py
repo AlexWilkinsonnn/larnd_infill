@@ -55,7 +55,7 @@ class LarndDataset(torch.utils.data.Dataset):
         # data_dir = os.path.join(dataroot, "valid" if valid else "train")
         data_dir = dataroot
         self.data = []
-        adcs, stacked_pixels = [], []
+        # adcs, stacked_pixels = [], [] # To get scalefactors
         for i, f in tqdm(
             enumerate(os.listdir(data_dir)),
             desc="Reading dataset into memory",
@@ -70,12 +70,12 @@ class LarndDataset(torch.utils.data.Dataset):
             self.data[-1]["data_path"] = data_path
 
             coo = sparse.load_npz(data_path)
-            print(coo.data.shape)
-            import sys; sys.exit()
-            for adc in coo.data[:, 0]:
-                adcs.append(adc)
-            for stacked_pixel in coo.data[:, 1]:
-                stacked_pixels.append(stacked_pixel)
+
+            # for coord_feat, feat in zip(coo.coords[-1], coo.data): # To get scalefactors
+            #     if coord_feat == 0:
+            #         adcs.append(feat)
+            #     elif coord_feat == 1:
+            #         stacked_pixels.append(feat)
 
             # [x][y][z] = [feat_1, feat_2]
             self.data[-1]["xyz"] = self._coo2nested(coo, 0, 1, 2, n_feats_in)
@@ -83,12 +83,14 @@ class LarndDataset(torch.utils.data.Dataset):
             if prep_type == DataPrepType.REFLECTION:
                 self.data[-1]["zxy"] = self._coo2nested(coo, 2, 0, 1, n_feats_in)
 
-        print("adcs: min={} max={} mean={}".format(min(adcs), max(adcs), np.mean(adcs)))
-        print(
-            "stacked_pixels: min={} max={} mean={}".format(
-                min(stacked_pixels), max(stacked_pixels), np.mean(stacked_pixels)
-            )
-        )
+        # # To get scalefactors
+        # print("adcs: min={} max={} mean={}".format(min(adcs), max(adcs), np.mean(adcs)))
+        # print(
+        #     "stacked_pixels: min={} max={} mean={}".format(
+        #         min(stacked_pixels), max(stacked_pixels), np.mean(stacked_pixels)
+        #     )
+        # )
+        # import sys; sys.exit()
 
     """ __init__ helpers """
 
