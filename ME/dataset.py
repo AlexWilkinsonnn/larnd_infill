@@ -22,6 +22,7 @@ class LarndDataset(torch.utils.data.Dataset):
             np.random.seed(seed)
 
         self.prep_type = prep_type
+        self.valid = valid
 
         self.n_feats_in = n_feats_in
         # Assuming the first n features are the target features
@@ -54,6 +55,7 @@ class LarndDataset(torch.utils.data.Dataset):
         # data_dir = os.path.join(dataroot, "valid" if valid else "train")
         data_dir = dataroot
         self.data = []
+        adcs, stacked_pixels = [], []
         for i, f in tqdm(
             enumerate(os.listdir(data_dir)),
             desc="Reading dataset into memory",
@@ -68,12 +70,25 @@ class LarndDataset(torch.utils.data.Dataset):
             self.data[-1]["data_path"] = data_path
 
             coo = sparse.load_npz(data_path)
+            print(coo.data.shape)
+            import sys; sys.exit()
+            for adc in coo.data[:, 0]:
+                adcs.append(adc)
+            for stacked_pixel in coo.data[:, 1]:
+                stacked_pixels.append(stacked_pixel)
 
             # [x][y][z] = [feat_1, feat_2]
             self.data[-1]["xyz"] = self._coo2nested(coo, 0, 1, 2, n_feats_in)
 
             if prep_type == DataPrepType.REFLECTION:
                 self.data[-1]["zxy"] = self._coo2nested(coo, 2, 0, 1, n_feats_in)
+
+        print("adcs: min={} max={} mean={}".format(min(adcs), max(adcs), np.mean(adcs)))
+        print(
+            "stacked_pixels: min={} max={} mean={}".format(
+                min(stacked_pixels), max(stacked_pixels), np.mean(stacked_pixels)
+            )
+        )
 
     """ __init__ helpers """
 
@@ -327,6 +342,9 @@ class LarndDataset(torch.utils.data.Dataset):
         }
 
     def _generate_random_mask(self):
+        if self.valid:
+            return self.x_true_gaps, self.z_true_gaps
+
         x_gaps = (
             self.x_true_gaps +
             (

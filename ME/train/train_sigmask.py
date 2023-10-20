@@ -72,7 +72,7 @@ def main(args):
         batch_size=conf.batch_size,
         collate_fn=collate_fn,
         num_workers=max(conf.max_num_workers, conf.batch_size),
-        shuffle=True # should I shuffle?
+        shuffle=True # Shuffling to see different events in saved validation image
     )
 
     optimizer = optim.SGD(net.parameters(), lr=conf.initial_lr, momentum=0.9, weight_decay=1e-4)
