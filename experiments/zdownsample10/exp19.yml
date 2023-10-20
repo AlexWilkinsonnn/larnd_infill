@@ -7,13 +7,15 @@ max_num_worders: 4
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/zdownsample10"
 name: "exp19"
 
-data_path: "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10/all"
+data_path: "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10"
 vmap_path: "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"
 data_prep_type: "reflection"
-scalefactors: [ 0.006666666666666667, 0.25 ] # 1/50, 1/4
+scalefactors: [ 0.0021929824561403508, 0.1111111111111111 ] # 1/456, 1/9
 n_feats_in: 2 # adc, num packets stacked
 n_feats_out: 1 # adc
 max_dataset_size: 20000
+max_valid_dataset_size: 2000
+adc_threshold: 1 # prune all predicted adc <= 1 in final layer
 
 batch_size: 4
 initial_lr: 0.01
