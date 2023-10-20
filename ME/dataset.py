@@ -80,8 +80,15 @@ class LarndDataset(torch.utils.data.Dataset):
             # [x][y][z] = [feat_1, feat_2]
             self.data[-1]["xyz"] = self._coo2nested(coo, 0, 1, 2, n_feats_in)
 
-            if prep_type == DataPrepType.REFLECTION:
+            if (
+                prep_type == DataPrepType.REFLECTION or
+                prep_type == DataPrepType.REFLECTION_SEPARATE_MASKS or
+                prep_type == DataPrepType.REFLECTION_NORANDOM
+            ):
                 self.data[-1]["zxy"] = self._coo2nested(coo, 2, 0, 1, n_feats_in)
+
+            if prep_type == DataPrepType.REFLECTION_NORANDOM:
+                self._init_getitem_reflection(self.data[-1])
 
         # # To get scalefactors
         # print("adcs: min={} max={} mean={}".format(min(adcs), max(adcs), np.mean(adcs)))
@@ -140,6 +147,24 @@ class LarndDataset(torch.utils.data.Dataset):
 
         return coords_feats
 
+    def _init_getitem_reflection(self, data):
+        x_gaps, z_gaps = self._generate_random_mask()
+
+        unmasked_coords, unmasked_feats, masked_coords, masked_feats = self._apply_mask(
+            data["xyz"], x_gaps, z_gaps
+        )
+
+        # Normalise to [0,1]
+        unmasked_feats *= self.feat_scalefactors
+        masked_feats *= self.feat_scalefactors
+
+        ret = self._getitem_reflection(
+            data["xyz"], data["zxy"],
+            unmasked_coords, unmasked_feats, masked_coords, masked_feats, x_gaps, z_gaps
+        )
+
+        data.update(ret)
+
     """ End __init__ helpers """
 
     def __len__(self):
@@ -147,6 +172,9 @@ class LarndDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         data = self.data[index]
+
+        if self.prep_type == DataPrepType.REFLECTION_NORANDOM:
+            return data
 
         x_gaps, z_gaps = self._generate_random_mask()
 
@@ -622,7 +650,8 @@ class DataPrepType(Enum):
     STANDARD = 1
     REFLECTION = 2
     REFLECTION_SEPARATE_MASKS = 3
-    GAP_DISTANCE = 4
+    REFLECTION_NORANDOM = 4
+    GAP_DISTANCE = 5
 
 
 # Testing
@@ -637,13 +666,13 @@ if __name__ == "__main__":
     )
     scalefactors = [1 / 300, 1 / 5]
     dataset = LarndDataset(
-        train_data_path, DataPrepType.REFLECTION, vmap, 2, 1, scalefactors,
-        max_dataset_size=20, seed=1
+        train_data_path, DataPrepType.REFLECTION_NORANDOM, vmap, 2, 1, scalefactors,
+        max_dataset_size=10, seed=1
     )
 
-    b_size = 1
+    b_size = 2
     dataloader = torch.utils.data.DataLoader(
-        dataset, batch_size=b_size, collate_fn=collate_fn, num_workers=0
+        dataset, batch_size=b_size, collate_fn=collate_fn, num_workers=0, shuffle=False
     )
 
     from larpixsoft.detector import set_detector_properties
@@ -657,10 +686,14 @@ if __name__ == "__main__":
 
     dataloader_itr = iter(dataloader)
     s = time.time()
-    num_iters = 4
+    num_iters = 2
     for i in range(num_iters):
         batch = next(dataloader_itr)
     e = time.time()
+    
+    # for i in range(3):
+    #     for data in dataloader:
+    #         print(data["mask_x"], data["mask_z"])
 
     print("Loaded {} images in {:.4f}s".format(b_size * num_iters, e - s))
     print(batch["input_coords"].shape, batch["input_feats"].shape)

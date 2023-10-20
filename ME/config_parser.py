@@ -73,6 +73,8 @@ def get_config(config_file, overwrite_dict={}, prep_checkpoint_dir=True):
         config_dict["data_prep_type"] = DataPrepType.REFLECTION
     elif config_dict["data_prep_type"] == "reflection_separate_masks":
         config_dict["data_prep_type"] = DataPrepType.REFLECTION_SEPARATE_MASKS
+    elif config_dict["data_prep_type"] == "reflection_norandom":
+        config_dict["data_prep_type"] = DataPrepType.REFLECTION_NORANDOM
     elif config_dict["data_prep_type"] == "gap_distance":
         config_dict["data_prep_type"] = DataPrepType.GAP_DISTANCE
     else:
