@@ -88,7 +88,7 @@ class LarndDataset(torch.utils.data.Dataset):
                 self.data[-1]["zxy"] = self._coo2nested(coo, 2, 0, 1, n_feats_in)
 
             if prep_type == DataPrepType.REFLECTION_NORANDOM:
-                self._init_getitem_reflection(self.data[-1])
+                self._init_getitem_reflection(-1)
 
         # # To get scalefactors
         # print("adcs: min={} max={} mean={}".format(min(adcs), max(adcs), np.mean(adcs)))
@@ -147,23 +147,13 @@ class LarndDataset(torch.utils.data.Dataset):
 
         return coords_feats
 
-    def _init_getitem_reflection(self, data):
-        x_gaps, z_gaps = self._generate_random_mask()
+    def _init_getitem_reflection(self, index):
+        old_prep_type = self.prep_type
+        self.prep_type = DataPrepType.REFLECTION
+        ret = self.__getitem__(index)
+        self.prep_type = old_prep_type
 
-        unmasked_coords, unmasked_feats, masked_coords, masked_feats = self._apply_mask(
-            data["xyz"], x_gaps, z_gaps
-        )
-
-        # Normalise to [0,1]
-        unmasked_feats *= self.feat_scalefactors
-        masked_feats *= self.feat_scalefactors
-
-        ret = self._getitem_reflection(
-            data["xyz"], data["zxy"],
-            unmasked_coords, unmasked_feats, masked_coords, masked_feats, x_gaps, z_gaps
-        )
-
-        data.update(ret)
+        self.data[index].update(ret)
 
     """ End __init__ helpers """
 
@@ -321,6 +311,7 @@ class LarndDataset(torch.utils.data.Dataset):
             coordsxyz_feats, infill_coords,
             (-1, 2), (-1, 2), (-3, 4),
             (0, 1), (0, 1), (0, 1),
+            # (-2, 3), (-2, 3), (-4, 5),
             x_gaps_set, z_gaps_set
         )
 
@@ -684,16 +675,21 @@ if __name__ == "__main__":
     detector = set_detector_properties(det_props, pixel_layout, pedestal=74)
     geometry = get_geom_map(pixel_layout)
 
+    s = time.time()
+    num_loops = 3
+    for i in range(num_loops):
+        for data in dataloader:
+            print(data["mask_x"], data["mask_z"])
+    e = time.time()
+    print(len(dataloader))
+    print("Loaded {} images in {:.4f}s".format(b_size * len(dataloader) * num_loops, e - s))
+
     dataloader_itr = iter(dataloader)
     s = time.time()
     num_iters = 2
     for i in range(num_iters):
         batch = next(dataloader_itr)
     e = time.time()
-    
-    # for i in range(3):
-    #     for data in dataloader:
-    #         print(data["mask_x"], data["mask_z"])
 
     print("Loaded {} images in {:.4f}s".format(b_size * num_iters, e - s))
     print(batch["input_coords"].shape, batch["input_feats"].shape)
