@@ -16,14 +16,6 @@ from ME.models.completion_net import CompletionNetSigMask
 from ME.losses import init_loss_func
 from aux import plot_ndlar_voxels_2
 
-# DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
-# PIXEL_LAYOUT=(
-#     "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
-# )
-# DEVICE = torch.device("cuda:0")
-# DATA_PATH = "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10/all"
-# VMAP_PATH = "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"
-
 def main(args):
     conf = get_config(args.config)
 
@@ -89,6 +81,8 @@ def main(args):
     t0 = time.time()
     losses_acc = defaultdict(list)
     n_iter = 0
+
+    write_log_str(conf.checkpoint_dir, "Iters per epoch: {}".format(len(dataloader_train)))
 
     for epoch in range(conf.epochs):
         write_log_str(conf.checkpoint_dir, "==== Epoch {} ====".format(epoch))
