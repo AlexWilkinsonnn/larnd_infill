@@ -21,6 +21,10 @@ class CustomLoss(ABC):
         pass
 
     @abstractmethod
+    def get_names_scalefactors(self):
+        pass
+
+    @abstractmethod
     def calc_loss(self, s_pred, s_in, s_target, data):
         pass
 
@@ -42,6 +46,16 @@ class PixelWise(CustomLoss):
         self.lambda_loss_active_nonzero = conf.loss_active_nonzero_weight
         self.lambda_loss_infill = conf.loss_infill_weight
         self.lambda_loss_active = conf.loss_active_weight
+
+    def get_names_scalefactors(self):
+        return {
+            "infill_zero" : self.lambda_loss_infill_zero,
+            "infill_nonzero" : self.lambda_loss_infill_nonzero,
+            "active_zero" : self.lambda_loss_active_zero,
+            "active_nonzero" : self.lambda_loss_active_nonzero,
+            "infill" : self.lambda_loss_infill,
+            "active" : self.lambda_loss_active
+        }
 
     def calc_loss(self, s_pred, s_in, s_target, data):
         (
@@ -134,19 +148,42 @@ class GapWise(CustomLoss):
         self.lambda_loss_z_gap_planes_adc = conf.loss_z_gap_planes_adc_weight
         self.lambda_loss_z_gap_planes_npixel = conf.loss_z_gap_planes_npixel_weight
 
+    def get_names_scalefactors(self):
+        return {
+            "infill_zero" : self.lambda_loss_infill_zero,
+            "infill_nonzero" : self.lambda_loss_infill_nonzero,
+            "x_gap_planes_adc" : self.lambda_loss_x_gap_planes_adc,
+            "x_gap_planes_npixel" : self.lambda_loss_x_gap_planes_npixel,
+            "z_gap_planes_adc" : self.lambda_loss_z_gap_planes_adc,
+            "z_gap_planes_npixel" : self.lambda_loss_z_gap_planes_npixel
+        }
+
     def calc_loss(self, s_pred, s_in, s_target, data):
         infill_coords, infill_coords_zero, infill_coords_nonzero = self._get_infill_coords(
             s_in, s_target
         )
 
-        loss_infill_zero = self._get_loss_at_coords(s_pred, s_target, infill_coords_zero)
-        loss_infill_nonzero = self._get_loss_at_coords(s_pred, s_target, infill_coords_nonzero)
+        loss_tot = 0.0
+        losses = {}
+
+        if self.lambda_loss_infill_zero:
+            loss_infill_zero = self._get_loss_at_coords(s_pred, s_target, infill_coords_zero)
+            loss_tot += self.lambda_loss_infill_zero * loss_infill_zero
+            losses["infill_zero"] = loss_infill_zero
+        if self.lambda_loss_infill_nonzero:
+            loss_infill_nonzero = self._get_loss_at_coords(s_pred, s_target, infill_coords_nonzero)
+            loss_tot += self.lambda_loss_infill_nonzero * loss_infill_nonzero
+            losses["infill_nonzero"] = loss_infill_nonzero
 
         x_gap_losses_adc, x_gap_losses_npixel = self._get_gap_losses(
-            s_pred, s_target, set(data["mask_x"][0]), infill_coords, 1
+            s_pred, s_target, set(data["mask_x"][0]), infill_coords, 1,
+            skip_adc=(not self.lambda_loss_x_gap_planes_adc),
+            skip_npixels=(not self.lambda_loss_x_gap_planes_npixel)
         )
         z_gap_losses_adc, z_gap_losses_npixel = self._get_gap_losses(
-            s_pred, s_target, set(data["mask_z"][0]), infill_coords, 3
+            s_pred, s_target, set(data["mask_z"][0]), infill_coords, 3,
+            skip_adc=(not self.lambda_loss_z_gap_planes_adc),
+            skip_npixels=(not self.lambda_loss_z_gap_planes_npixel)
         )
 
         # print()
@@ -154,35 +191,36 @@ class GapWise(CustomLoss):
         # print(x_gap_losses_npixel)
         # print()
 
-        loss_tot = (
-            self.lambda_loss_infill_zero * loss_infill_zero +
-            self.lambda_loss_infill_nonzero * loss_infill_nonzero
-        )
-        if x_gap_losses_adc:
-            loss_x_gap_planes_adc = torch.mean(torch.cat(x_gap_losses_adc, 0))
-            loss_tot +=  self.lambda_loss_x_gap_planes_adc * loss_x_gap_planes_adc
-            loss_x_gap_planes_npixel = torch.mean(torch.cat(x_gap_losses_npixel, 0))
-            loss_tot +=  self.lambda_loss_x_gap_planes_npixel * loss_x_gap_planes_npixel
-        else:
-            loss_x_gap_planes_adc, loss_x_gap_planes_npixel = torch.tensor(0.0), torch.tensor(0.0)
-        if z_gap_losses_adc:
-            loss_z_gap_planes_adc = torch.mean(torch.cat(z_gap_losses_adc, 0))
-            loss_tot +=  self.lambda_loss_z_gap_planes_adc * loss_z_gap_planes_adc
-            loss_z_gap_planes_npixel = torch.mean(torch.cat(z_gap_losses_npixel, 0))
-            loss_tot +=  self.lambda_loss_z_gap_planes_npixel * loss_z_gap_planes_npixel
-        else:
-            loss_z_gap_planes_adc, loss_z_gap_planes_npixel = torch.tensor(0.0), torch.tensor(0.0)
+        if self.lambda_loss_x_gap_planes_adc:
+            if x_gap_losses_adc:
+                loss_x_gap_planes_adc = torch.mean(torch.cat(x_gap_losses_adc, 0))
+            else:
+                loss_x_gap_planes_adc = torch.tensor(0.0)
+            loss_tot += self.lambda_loss_x_gap_planes_adc * loss_x_gap_planes_adc
+            losses["x_gap_planes_adc"] = loss_x_gap_planes_adc
+        if self.lambda_loss_x_gap_planes_npixel:
+            if x_gap_losses_npixel:
+                loss_x_gap_planes_npixel = torch.mean(torch.cat(x_gap_losses_npixel, 0))
+            else:
+                loss_x_gap_planes_npixel = torch.tensor(0.0)
+            loss_tot += self.lambda_loss_x_gap_planes_npixel * loss_x_gap_planes_npixel
+            losses["x_gap_planes_npixel"] = loss_x_gap_planes_npixel
+        if self.lambda_loss_z_gap_planes_adc:
+            if z_gap_losses_adc:
+                loss_z_gap_planes_adc = torch.mean(torch.cat(z_gap_losses_adc, 0))
+            else:
+                loss_z_gap_planes_adc = torch.tensor(0.0)
+            loss_tot += self.lambda_loss_z_gap_planes_adc * loss_z_gap_planes_adc
+            losses["z_gap_planes_adc"] = loss_z_gap_planes_adc
+        if self.lambda_loss_z_gap_planes_npixel:
+            if z_gap_losses_npixel:
+                loss_z_gap_planes_npixel = torch.mean(torch.cat(z_gap_losses_npixel, 0))
+            else:
+                loss_z_gap_planes_npixel = torch.tensor(0.0)
+            loss_tot += self.lambda_loss_z_gap_planes_npixel * loss_z_gap_planes_npixel
+            losses["z_gap_planes_npixel"] = loss_z_gap_planes_npixel
 
-        return (
-            loss_tot,
-            {
-                 "infill_zero" : loss_infill_zero, "infill_nonzero" : loss_infill_nonzero,
-                 "x_gap_planes_adc" : loss_x_gap_planes_adc,
-                 "x_gap_planes_npixel" : loss_x_gap_planes_npixel,
-                 "z_gap_planes_adc" : loss_z_gap_planes_adc,
-                 "z_gap_planes_npixel" : loss_z_gap_planes_npixel
-            }
-        )
+        return loss_tot, losses
 
     def _get_infill_coords(self, s_in, s_target):
         s_in_infill_mask = s_in.F[:, -1] == 1
@@ -208,36 +246,46 @@ class GapWise(CustomLoss):
 
         return loss
 
-    def _get_gap_losses(self, s_pred, s_target, gaps, infill_coords, coord_idx):
+    def _get_gap_losses(
+        self, s_pred, s_target, gaps, infill_coords, coord_idx, skip_adc=False, skip_npixels=False
+    ):
         gap_losses_adc, gap_losses_npixel = [], []
+
+        if skip_adc and skip_npixels:
+            return gap_losses_adc, gap_losses_npixel
+
         for gap in torch.unique(infill_coords[:, coord_idx]).tolist():
             if gap not in gaps:
                 continue
             gap_coords = infill_coords[infill_coords[:, coord_idx] == gap]
-            gap_losses_adc.append(
-                self.crit(
-                    s_pred.features_at_coordinates(gap_coords).squeeze().sum(),
-                    s_target.features_at_coordinates(gap_coords).squeeze().sum()
-                ).view(1) # 0d -> 1d for cat operation later
-            )
-            gap_losses_npixel.append(
-                self.crit(
-                    (
-                        torch.clamp(
-                            s_pred.features_at_coordinates(gap_coords).squeeze(),
-                            min=0.0, max=self.adc_threshold
-                        ).sum(dtype=s_pred.F.dtype) *
-                        (1 / self.adc_threshold)
-                    ),
-                    (
-                        torch.clamp(
-                            s_target.features_at_coordinates(gap_coords).squeeze(),
-                            min=0.0, max=self.adc_threshold
-                        ).sum(dtype=s_target.F.dtype) *
-                        (1 / self.adc_threshold)
-                    )
-                ).view(1)
-            )
+
+            if not skip_adc:
+                gap_losses_adc.append(
+                    self.crit(
+                        s_pred.features_at_coordinates(gap_coords).squeeze().sum(),
+                        s_target.features_at_coordinates(gap_coords).squeeze().sum()
+                    ).view(1) # 0d -> 1d for cat operation later
+                )
+
+            if not skip_npixels:
+                gap_losses_npixel.append(
+                    self.crit(
+                        (
+                            torch.clamp(
+                                s_pred.features_at_coordinates(gap_coords).squeeze(),
+                                min=0.0, max=self.adc_threshold
+                            ).sum(dtype=s_pred.F.dtype) *
+                            (1 / self.adc_threshold)
+                        ),
+                        (
+                            torch.clamp(
+                                s_target.features_at_coordinates(gap_coords).squeeze(),
+                                min=0.0, max=self.adc_threshold
+                            ).sum(dtype=s_target.F.dtype) *
+                            (1 / self.adc_threshold)
+                        )
+                    ).view(1)
+                )
 
         return gap_losses_adc, gap_losses_npixel
 

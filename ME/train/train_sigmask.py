@@ -82,6 +82,7 @@ def main(args):
     print("LR {}".format(scheduler.get_lr()))
 
     loss_cls = init_loss_func(conf)
+    loss_scalefactors = loss_cls.get_names_scalefactors()
 
     net.train()
 
@@ -126,7 +127,9 @@ def main(args):
             ):
                 t_iter = time.time() - t0
                 t0 = time.time()
-                loss_str = get_print_str(epoch, losses_acc, n_iter_epoch, n_iter, t_iter, s_pred)
+                loss_str = get_print_str(
+                    epoch, losses_acc, loss_scalefactors, n_iter_epoch, n_iter, t_iter, s_pred
+                )
                 write_log_str(conf.checkpoint_dir, loss_str)
                 losses_acc = defaultdict(list)
             if (
@@ -160,7 +163,9 @@ def main(args):
         if isinstance(args.print_iter, str) and args.print_iter == "epoch":
             t_iter = time.time() - t0
             t0 = time.time()
-            loss_str = get_print_str(epoch, losses_acc, n_iter_epoch, n_iter, t_iter, s_pred)
+            loss_str = get_print_str(
+                epoch, losses_acc, loss_scalefactors, n_iter_epoch, n_iter, t_iter, s_pred
+            )
             write_log_str(conf.checkpoint_dir, loss_str)
             losses_acc = defaultdict(list)
         if isinstance(args.plot_iter, str) and args.plot_iter == "epoch":
@@ -207,7 +212,7 @@ def main(args):
 
         loss_str = (
             "Validation with {} images:\n".format(len(dataset_valid)) +
-			get_loss_str(losses_acc_valid)
+			get_loss_str(losses_acc_valid, loss_scalefactors)
         )
         write_log_str(conf.checkpoint_dir, loss_str)
         # Plot last prediction of validation loop
@@ -230,19 +235,25 @@ def write_log_str(checkpoint_dir, log_str, print_str=True):
         f.write(log_str + '\n')
 
 
-def get_print_str(epoch, losses_acc, n_iter, n_iter_tot, t_iter, s_pred):
+def get_print_str(epoch, losses_acc, loss_scalefactors, n_iter, n_iter_tot, t_iter, s_pred):
     return (
         "Epoch: {}, Iter: {}, Total Iter: {}, ".format(epoch, n_iter + 1, n_iter_tot + 1) +
         "Time: {:.7f}, last s_pred.shape: {}\n\t".format(t_iter, s_pred.shape) +
-		get_loss_str(losses_acc)
+		get_loss_str(losses_acc, loss_scalefactors)
     )
 
-def get_loss_str(losses_acc):
+
+def get_loss_str(losses_acc, loss_scalefactors):
     loss_str = "Losses: total={:.7f}".format(np.mean(losses_acc["tot"]))
     for loss_name, loss in sorted(losses_acc.items()):
         if loss_name == "tot":
             continue
-        loss_str += " " + loss_name + "={:.7f}".format(np.mean(loss))
+        loss_u = np.mean(loss)
+        loss_str += (
+            " " + loss_name + "={:.7f} ({:.7f})".format(
+                loss_u, loss_u * loss_scalefactors[loss_name]
+            )
+        )
     return loss_str
 
 
