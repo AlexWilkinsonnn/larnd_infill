@@ -50,6 +50,7 @@ def main(args):
         conf.vmap,
         conf.n_feats_in, conf.n_feats_out,
         conf.scalefactors,
+        conf.xyz_smear_infill, conf.xyz_smear_active,
         max_dataset_size=conf.max_dataset_size
     )
     dataloader_train = torch.utils.data.DataLoader(
@@ -65,6 +66,7 @@ def main(args):
         conf.vmap,
         conf.n_feats_in, conf.n_feats_out,
         conf.scalefactors,
+        conf.xyz_smear_infill, conf.xyz_smear_active,
         max_dataset_size=conf.max_valid_dataset_size
     )
     dataloader_valid = torch.utils.data.DataLoader(

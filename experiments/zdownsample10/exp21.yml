@@ -16,6 +16,7 @@ n_feats_out: 1 # adc
 max_dataset_size: 20000
 max_valid_dataset_size: 2000
 adc_threshold: 1 # prune all predicted adc <= 1 in final layer
+xyz_smear_active: ((-2, 3), (-2, 3), (-4, 5))
 
 batch_size: 2
 initial_lr: 0.01
@@ -28,5 +29,3 @@ loss_active_zero_weight: 0.0001
 loss_active_nonzero_weight: 0.0001
 loss_infill_weight: 0
 loss_active_weight: 0
-
-NOTE: "This exp had hardcoded in _make_signal_mask: active x_smear_active: (-2,3) y_smear_active: (-2,3) z_smear_active: (-4,5)"

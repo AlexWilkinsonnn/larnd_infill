@@ -14,8 +14,13 @@ from aux import plot_ndlar_voxels_2
 class LarndDataset(torch.utils.data.Dataset):
     """Dataset for reading sparse volexised larnd-sim data and preparing an infill mask"""
     def __init__(
-        self, dataroot, prep_type, vmap, n_feats_in, n_feats_out, feat_scalefactors,
-        x_true_gap_padding=None, z_true_gap_padding=None,
+        self,
+        dataroot,
+        prep_type,
+        vmap,
+        n_feats_in, n_feats_out,
+        feat_scalefactors,
+        xyz_smear_infill, xyz_smear_active,
         valid=False, max_dataset_size=0, seed=None
     ):
         if seed is not None:
@@ -44,12 +49,15 @@ class LarndDataset(torch.utils.data.Dataset):
         self.z_gap_size = self._calc_gap_size(self.z_true_gaps)
         self.z_gap_spacing = self._calc_gap_spacing(self.z_true_gaps, vmap["n_voxels"]["z"])
 
-        self.x_true_gap_padding = (
-            self.x_gap_size if x_true_gap_padding is None else x_true_gap_padding
-        )
-        self.z_true_gap_padding = (
-            self.z_gap_size if z_true_gap_padding is None else z_true_gap_padding
-        )
+        if prep_type == DataPrepType.REFLECTION_NORANDOM:
+            self.x_true_gap_padding = int(self.x_gap_spacing / 2 - self.x_gap_size / 2)
+            self.z_true_gap_padding = int(self.z_gap_spacing / 2 - self.z_gap_size / 2)
+        else:
+            self.x_true_gap_padding = 2 * self.x_gap_size
+            self.z_true_gap_padding = 2 * self.z_gap_size
+
+        self.x_smear_infill, self.y_smear_infill, self.z_smear_infill = xyz_smear_infill
+        self.x_smear_active, self.y_smear_active, self.z_smear_active = xyz_smear_active
 
         # NOTE mutliprocessing does not speed up this loop
         # data_dir = os.path.join(dataroot, "valid" if valid else "train")
@@ -309,8 +317,10 @@ class LarndDataset(torch.utils.data.Dataset):
         # Smear signal mask in all directions
         signal_mask_active_coords, signal_mask_gap_coords = self._make_signal_mask(
             coordsxyz_feats, infill_coords,
-            (-1, 2), (-1, 2), (-3, 4),
-            (0, 1), (0, 1), (0, 1),
+            self.x_smear_infill, self.y_smear_infill, self.z_smear_infill,
+            self.x_smear_active, self.y_smear_active, self.z_smear_active,
+            # (-1, 2), (-1, 2), (-3, 4),
+            # (0, 1), (0, 1), (0, 1),
             # (-2, 3), (-2, 3), (-4, 5),
             x_gaps_set, z_gaps_set
         )
@@ -371,8 +381,7 @@ class LarndDataset(torch.utils.data.Dataset):
             (
                 np.random.choice([1, -1]) *
                 np.random.randint(
-                    self.x_true_gap_padding + self.x_gap_size,
-                    self.x_gap_spacing - self.x_true_gap_padding - self.x_gap_size
+                    self.x_true_gap_padding, self.x_gap_spacing - self.x_true_gap_padding
                 )
             )
         )
@@ -381,8 +390,7 @@ class LarndDataset(torch.utils.data.Dataset):
             (
                 np.random.choice([1, -1]) *
                 np.random.randint(
-                    self.z_true_gap_padding + self.z_gap_size,
-                    self.z_gap_spacing - self.z_true_gap_padding - self.z_gap_size
+                    self.z_true_gap_padding, self.z_gap_spacing - self.z_true_gap_padding
                 )
             )
         )
@@ -658,6 +666,7 @@ if __name__ == "__main__":
     scalefactors = [1 / 300, 1 / 5]
     dataset = LarndDataset(
         train_data_path, DataPrepType.REFLECTION_NORANDOM, vmap, 2, 1, scalefactors,
+        ((-1, 2), (-1, 2), (-3, 4)), ((0, 1), (0, 1), (0, 1)),
         max_dataset_size=10, seed=1
     )
 

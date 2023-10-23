@@ -18,7 +18,9 @@ defaults = {
     ),
     "device" : "cuda:0",
     "max_num_workers" : 4,
-    "adc_threshold" : 1
+    "adc_threshold" : 1,
+    "xyz_smear_infill": ((-1, 2), (-1, 2), (-3, 4)),
+    "xyz_smear_active": ((0, 1), (0, 1), (0, 1))
 }
 
 mandatory_fields = {
