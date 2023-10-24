@@ -319,9 +319,6 @@ class LarndDataset(torch.utils.data.Dataset):
             coordsxyz_feats, infill_coords,
             self.x_smear_infill, self.y_smear_infill, self.z_smear_infill,
             self.x_smear_active, self.y_smear_active, self.z_smear_active,
-            # (-1, 2), (-1, 2), (-3, 4),
-            # (0, 1), (0, 1), (0, 1),
-            # (-2, 3), (-2, 3), (-4, 5),
             x_gaps_set, z_gaps_set
         )
 
@@ -684,14 +681,14 @@ if __name__ == "__main__":
     detector = set_detector_properties(det_props, pixel_layout, pedestal=74)
     geometry = get_geom_map(pixel_layout)
 
-    s = time.time()
-    num_loops = 3
-    for i in range(num_loops):
-        for data in dataloader:
-            print(data["mask_x"], data["mask_z"])
-    e = time.time()
-    print(len(dataloader))
-    print("Loaded {} images in {:.4f}s".format(b_size * len(dataloader) * num_loops, e - s))
+    # s = time.time()
+    # num_loops = 3
+    # for i in range(num_loops):
+    #     for data in dataloader:
+    #         print(data["mask_x"], data["mask_z"])
+    # e = time.time()
+    # print(len(dataloader))
+    # print("Loaded {} images in {:.4f}s".format(b_size * len(dataloader) * num_loops, e - s))
 
     dataloader_itr = iter(dataloader)
     s = time.time()
@@ -714,6 +711,12 @@ if __name__ == "__main__":
 
     s_in = ME.SparseTensor(coordinates=batch["input_coords"], features=batch["input_feats"])
     s_target = ME.SparseTensor(coordinates=batch["target_coords"], features=batch["target_feats"])
+    
+    # target_coords = s_in.coordinates_at(0).unsqueeze(0)
+    # for b in range(b_size - 1):
+    #     target_coords = torch.cat([target_coords, s_in.coordinates_at(b).unsqueeze(0)], dim=0)
+    # print(target_coords)
+    # print(target_coords.shape)
 
     for i_batch, (coords_target, feats_target, coords_in, feats_in) in enumerate(
         zip(

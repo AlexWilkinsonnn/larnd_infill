@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 
 import MinkowskiEngine as ME
-import torch; import torch.nn as nn
+import torch; import torch.nn as nn; from torch.nn.utils.rnn import pad_sequence
+from chamfer_distance import ChamferDistance
 
 
 def init_loss_func(conf):
@@ -9,6 +10,8 @@ def init_loss_func(conf):
         loss = PixelWise(conf)
     elif conf.loss_func == "GapWise_L1Loss" or conf.loss_func == "GapWise_MSELoss":
         loss = GapWise(conf)
+    elif conf.loss_func == "Chamfer":
+        loss = Chamfer(conf)
     else:
         raise ValueError("loss_func={} not valid".format(conf.loss_func))
 
@@ -63,7 +66,7 @@ class PixelWise(CustomLoss):
             infill_coords_zero, infill_coords_nonzero,
             active_coords_zero, active_coords_nonzero
         ) = self._get_infill_active_coords(s_in, s_target)
-        
+
         loss_tot = 0.0
         losses = {}
         if self.lambda_loss_infill_zero:
@@ -290,4 +293,76 @@ class GapWise(CustomLoss):
         return gap_losses_adc, gap_losses_npixel
 
 
+# NOTE I dont know how to get this working, in current state seems to compute Chamfer distance
+# correctly but there are no gradients making it through. Need a way to use the features of the
+# sparse tensors since these what have the gradients
+class Chamfer(CustomLoss):
+    """
+    Loss based around Chamfer loss for pointclouds
+    """
+    def __init__(self, conf):
+        self.chamfer_distance = ChamferDistance()
+
+        self.device = torch.device(conf.device)
+
+        self.lambda_loss_infill_chamfer = conf.loss_infill_chamfer_weight
+
+    def get_names_scalefactors(self):
+        return { "infill_chamfer" : self.lambda_loss_infill_chamfer }
+
+    def calc_loss(self, s_pred, s_in, s_target, data):
+        loss_tot = 0.0
+        losses = {}
+
+        infill_coords_nonzero_pred, infill_coords_nonzero_target = self._get_infill_coords(
+            s_in, s_target, s_pred
+        )
+
+        x = [
+            infill_coords_nonzero_pred[infill_coords_nonzero_pred[:,0] == i_batch][:,1:].type(torch.float)
+            for i_batch in range(len(data["mask_x"]))
+        ]
+        x_lengths = torch.tensor([ b.shape[0] for b in x ], device=self.device, dtype=torch.long)
+        x = pad_sequence(x, batch_first=True)
+        y = [
+            infill_coords_nonzero_target[infill_coords_nonzero_target[:,0] == i_batch][:,1:].type(torch.float)
+            for i_batch in range(len(data["mask_x"]))
+        ]
+        y_lengths = torch.tensor([ b.shape[0] for b in y ], device=self.device, dtype=torch.long)
+        y = pad_sequence(y, batch_first=True)
+
+        # print(x)
+        # print(x.shape)
+        # print(y)
+        # print(y.shape)
+        cham_dist_1, cham_dist_2, _, _ = self.chamfer_distance(
+            x, y, x_lengths=x_lengths, y_lengths=y_lengths
+        )
+        # print(cham_dist_1)
+        # print(cham_dist_1.shape)
+        # print(cham_dist_2)
+        # print(cham_dist_2.shape)
+        loss_infill_chamfer = torch.mean(cham_dist_1) + torch.mean(cham_dist_2)
+        # print(loss_infill_chamfer)
+        loss_tot += self.lambda_loss_infill_chamfer * loss_infill_chamfer
+        losses["infill_chamfer"] = loss_infill_chamfer
+
+        return loss_tot, losses
+
+    def _get_infill_coords(self, s_in, s_target, s_pred):
+        s_in_infill_mask = s_in.F[:, -1] == 1
+        infill_coords = s_in.C[s_in_infill_mask]
+        infill_coords_float = infill_coords.type(torch.float)
+
+        infill_coords_nonzero_target_mask = (
+            s_target.features_at_coordinates(infill_coords_float)[:, 0] != 0
+        )
+        infill_coords_nonzero_target = infill_coords[infill_coords_nonzero_target_mask]
+
+        infill_coords_nonzero_pred_mask = (
+            s_pred.features_at_coordinates(infill_coords_float)[:, 0] != 0
+        )
+        infill_coords_nonzero_pred = infill_coords[infill_coords_nonzero_pred_mask]
+
+        return infill_coords_nonzero_pred, infill_coords_nonzero_target
 
