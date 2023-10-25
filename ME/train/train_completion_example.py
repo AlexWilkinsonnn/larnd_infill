@@ -157,17 +157,16 @@ def main(args):
             in_feat = torch.ones((len(data["input_coords"]), 1))
 
             s_in = ME.SparseTensor(
-                feats=in_feat,
-                coords=data["input_coords"],
+                features=in_feat,
+                coordinates=data["input_coords"],
                 device=device
             )
 
             # Generate target sparse tensor
-            cm = s_in.coords_man
-            target_key = cm.create_coords_key(
-                data["target_coords"],
-                force_creation=True,
-                allow_duplicate_coords=True,
+            cm = s_in.coordinate_manager
+            target_key, _ = cm.insert_and_map(
+                data["target_coords"].to(device),
+                string_id="target"
             )
 
             # Generate from a dense tensor
@@ -180,14 +179,8 @@ def main(args):
                 )
             loss_acc_valid.append(loss.item())
 
-        t_valid = time.time() - t0_valid
-        loss_str = "Validation with {} images:\n".format(len(dataset_valid))
-        loss_str += "time: {:.7f}, ".format(t_valid)
-        loss_str += "loss: {:.7f}".format(np.mean(loss_acc_valid))
-        write_log_str(conf.checkpoint_dir, loss_str)
-        loss_acc_valid = []
-
         # Plot last prediction of validation loop
+        t_valid = time.time() - t0_valid
         s_target = ME.SparseTensor(
             coordinates=data["target_coords"],
             features=torch.ones((len(data["target_coords"]), 1)),
@@ -208,6 +201,12 @@ def main(args):
             save_dir=os.path.join(conf.checkpoint_dir, "preds"),
             save_tensors=True
         )
+
+        loss_str = "Validation with {} images:\n".format(len(dataset_valid))
+        loss_str += "time: {:.7f}, ".format(t_valid)
+        loss_str += "loss: {:.7f}".format(np.mean(loss_acc_valid))
+        write_log_str(conf.checkpoint_dir, loss_str)
+        loss_acc_valid = []
 
 
 def write_log_str(checkpoint_dir, log_str, print_str=True):
