@@ -6,7 +6,11 @@ from chamfer_distance import ChamferDistance
 
 
 def init_loss_func(conf):
-    if conf.loss_func == "PixelWise_L1Loss" or conf.loss_func == "PixelWise_MSELoss":
+    if (
+        conf.loss_func == "PixelWise_L1Loss" or
+        conf.loss_func == "PixelWise_MSELoss" or
+        conf.loss_func == "PixelWise_BCEWithLogitsLoss"
+    ):
         loss = PixelWise(conf)
     elif conf.loss_func == "GapWise_L1Loss" or conf.loss_func == "GapWise_MSELoss":
         loss = GapWise(conf)
@@ -16,6 +20,14 @@ def init_loss_func(conf):
         raise ValueError("loss_func={} not valid".format(conf.loss_func))
 
     return loss
+
+
+class BCE:
+    def __init__(self, reduction="mean"):
+        self.crit = nn.BCELoss(reduction=reduction)
+
+    def __call__(self, pred, target):
+        return self.crit(pred, target)
 
 
 class CustomLoss(ABC):
@@ -40,6 +52,9 @@ class PixelWise(CustomLoss):
         elif conf.loss_func == "PixelWise_MSELoss":
             self.crit = nn.MSELoss()
             self.crit_sumreduction = nn.MSELoss(reduction="sum")
+        elif conf.loss_func == "PixelWise_BCEWithLogitsLoss":
+            self.crit = nn.BCEWithLogitsLoss()
+            self.crit_sumreduction = nn.BCEWithLogitsLoss(reduction="sum")
         else:
             raise NotImplementedError("loss_func={} not valid".format(conf.loss_func))
 
