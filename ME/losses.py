@@ -64,6 +64,7 @@ class PixelWise(CustomLoss):
         self.lambda_loss_active_nonzero = conf.loss_active_nonzero_weight
         self.lambda_loss_infill = conf.loss_infill_weight
         self.lambda_loss_active = conf.loss_active_weight
+        self.lambda_loss_infill_sum = conf.loss_infill_sum_weight
 
     def get_names_scalefactors(self):
         return {
@@ -72,7 +73,8 @@ class PixelWise(CustomLoss):
             "active_zero" : self.lambda_loss_active_zero,
             "active_nonzero" : self.lambda_loss_active_nonzero,
             "infill" : self.lambda_loss_infill,
-            "active" : self.lambda_loss_active
+            "active" : self.lambda_loss_active,
+            "infill_sum" : self.lambda_loss_infill_sum
         }
 
     def calc_loss(self, s_pred, s_in, s_target, data):
@@ -108,6 +110,12 @@ class PixelWise(CustomLoss):
             loss_active = self._get_loss_at_coords(s_pred, s_target, active_coords)
             loss_tot += self.lambda_loss_active * loss_active
             losses["active"] = loss_active
+        if self.lambda_loss_infill_sum:
+            loss_infill_sum = self._get_summed_loss_at_coords(s_pred, s_target, infill_coords)
+            loss_tot += self.lambda_loss_infill_sum * loss_infill_sum
+            losses["infill_sum"] = loss_infill_sum
+
+        print(losses)
 
         return loss_tot, losses
 
@@ -115,6 +123,7 @@ class PixelWise(CustomLoss):
         s_in_infill_mask = s_in.F[:, -1] == 1
         infill_coords = s_in.C[s_in_infill_mask].type(torch.float)
         active_coords = s_in.C[~s_in_infill_mask].type(torch.float)
+        print(infill_coords.shape, active_coords.shape)
 
         infill_coords_zero_mask = s_target.features_at_coordinates(infill_coords)[:, 0] == 0
         infill_coords_zero = infill_coords[infill_coords_zero_mask]
@@ -141,6 +150,20 @@ class PixelWise(CustomLoss):
                 s_pred.features_at_coordinates(coords).squeeze(),
                 s_target.features_at_coordinates(coords).squeeze()
             )
+
+        return loss
+
+    def _get_summed_loss_at_coords(self, s_pred, s_target, coords):
+        if coords.shape[0]:
+            loss = self.crit(
+                s_pred.features_at_coordinates(coords).squeeze().sum(),
+                s_target.features_at_coordinates(coords).squeeze().sum()
+            ) / len(coords)
+        else:
+            loss = self.crit_sumreduction(
+                s_pred.features_at_coordinates(coords).squeeze().sum(),
+                s_target.features_at_coordinates(coords).squeeze().sum()
+            ) / len(coords)
 
         return loss
 
