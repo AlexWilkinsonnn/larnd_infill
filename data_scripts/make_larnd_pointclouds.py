@@ -104,7 +104,7 @@ def main(args):
                     for i in range(3)
                 ],
                 [ feat for feat, coord_feat in zip(feats, coords[3]) if coord_feat == 0 ],
-                detector, vmap["x"], vmap["y"], vmap["z"],
+                detector, vmap["x"], vmap["y"], vmap["z"], vmap["x_gaps"], vmap["z_gaps"],
                 z_scalefactor=1, max_feat=150, tracks=tracks
             )
             # plot_ndlar_voxels_2(
