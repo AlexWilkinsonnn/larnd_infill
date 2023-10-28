@@ -115,15 +115,12 @@ class PixelWise(CustomLoss):
             loss_tot += self.lambda_loss_infill_sum * loss_infill_sum
             losses["infill_sum"] = loss_infill_sum
 
-        print(losses)
-
         return loss_tot, losses
 
     def _get_infill_active_coords(self, s_in, s_target):
         s_in_infill_mask = s_in.F[:, -1] == 1
         infill_coords = s_in.C[s_in_infill_mask].type(torch.float)
         active_coords = s_in.C[~s_in_infill_mask].type(torch.float)
-        print(infill_coords.shape, active_coords.shape)
 
         infill_coords_zero_mask = s_target.features_at_coordinates(infill_coords)[:, 0] == 0
         infill_coords_zero = infill_coords[infill_coords_zero_mask]
