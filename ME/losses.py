@@ -213,46 +213,84 @@ class GapWise(CustomLoss):
             loss_tot += self.lambda_loss_infill_nonzero * loss_infill_nonzero
             losses["infill_nonzero"] = loss_infill_nonzero
 
-        x_gap_losses_adc, x_gap_losses_npixel = self._get_gap_losses(
-            s_pred, s_target, set(data["mask_x"][0]), infill_coords, 1,
-            skip_adc=(not self.lambda_loss_x_gap_planes_adc),
-            skip_npixels=(not self.lambda_loss_x_gap_planes_npixel)
-        )
-        z_gap_losses_adc, z_gap_losses_npixel = self._get_gap_losses(
-            s_pred, s_target, set(data["mask_z"][0]), infill_coords, 3,
-            skip_adc=(not self.lambda_loss_z_gap_planes_adc),
-            skip_npixels=(not self.lambda_loss_z_gap_planes_npixel)
-        )
+        x_gap_losses_adc, x_gap_losses_npixel = [], []
+        z_gap_losses_adc, z_gap_losses_npixel = [], []
+        for i_batch in range(len(data["mask_x"])):
+            batch_infill_coords = infill_coords[infill_coords[:, 0] == i_batch]
+            x_gap_losses_adc_batch, x_gap_losses_npixel_batch = self._get_gap_losses(
+                s_pred, s_target,
+                set(data["mask_x"][i_batch]),
+                batch_infill_coords,
+                1,
+                skip_adc=(not self.lambda_loss_x_gap_planes_adc),
+                skip_npixels=(not self.lambda_loss_x_gap_planes_npixel)
+            )
+            x_gap_losses_adc.append(x_gap_losses_adc_batch)
+            x_gap_losses_npixel.append(x_gap_losses_npixel_batch)
 
-        # print()
-        # print(x_gap_losses_adc)
-        # print(x_gap_losses_npixel)
-        # print()
+            z_gap_losses_adc_batch, z_gap_losses_npixel_batch = self._get_gap_losses(
+                s_pred, s_target,
+                set(data["mask_z"][i_batch]),
+                batch_infill_coords,
+                3,
+                skip_adc=(not self.lambda_loss_z_gap_planes_adc),
+                skip_npixels=(not self.lambda_loss_z_gap_planes_npixel)
+            )
+            z_gap_losses_adc.append(z_gap_losses_adc_batch)
+            z_gap_losses_npixel.append(z_gap_losses_npixel_batch)
 
         if self.lambda_loss_x_gap_planes_adc:
-            if x_gap_losses_adc:
-                loss_x_gap_planes_adc = torch.mean(torch.cat(x_gap_losses_adc, 0))
+            if any(x_gap_losses_adc):
+                loss_x_gap_planes_adc = sum(
+                    (
+                        torch.mean(torch.cat(x_gap_losses_adc_batch, 0)) /
+                        len(x_gap_losses_adc_batch)
+                    )
+                    for x_gap_losses_adc_batch in x_gap_losses_adc
+                        if x_gap_losses_adc_batch
+                ) / len(x_gap_losses_adc)
             else:
                 loss_x_gap_planes_adc = torch.tensor(0.0)
             loss_tot += self.lambda_loss_x_gap_planes_adc * loss_x_gap_planes_adc
             losses["x_gap_planes_adc"] = loss_x_gap_planes_adc
         if self.lambda_loss_x_gap_planes_npixel:
-            if x_gap_losses_npixel:
-                loss_x_gap_planes_npixel = torch.mean(torch.cat(x_gap_losses_npixel, 0))
+            if any(x_gap_losses_npixel):
+                loss_x_gap_planes_npixel = sum(
+                    (
+                        torch.mean(torch.cat(x_gap_losses_npixel_batch, 0)) /
+                        len(x_gap_losses_npixel_batch)
+                    )
+                    for x_gap_losses_npixel_batch in x_gap_losses_npixel
+                        if x_gap_losses_npixel_batch
+                )
             else:
                 loss_x_gap_planes_npixel = torch.tensor(0.0)
             loss_tot += self.lambda_loss_x_gap_planes_npixel * loss_x_gap_planes_npixel
             losses["x_gap_planes_npixel"] = loss_x_gap_planes_npixel
         if self.lambda_loss_z_gap_planes_adc:
-            if z_gap_losses_adc:
-                loss_z_gap_planes_adc = torch.mean(torch.cat(z_gap_losses_adc, 0))
+            if any(z_gap_losses_adc):
+                loss_z_gap_planes_adc = sum(
+                    (
+                        torch.mean(torch.cat(z_gap_losses_adc_batch, 0)) /
+                        len(z_gap_losses_adc_batch)
+                    )
+                    for z_gap_losses_adc_batch in z_gap_losses_adc
+                        if z_gap_losses_adc_batch
+                )
             else:
                 loss_z_gap_planes_adc = torch.tensor(0.0)
             loss_tot += self.lambda_loss_z_gap_planes_adc * loss_z_gap_planes_adc
             losses["z_gap_planes_adc"] = loss_z_gap_planes_adc
         if self.lambda_loss_z_gap_planes_npixel:
-            if z_gap_losses_npixel:
-                loss_z_gap_planes_npixel = torch.mean(torch.cat(z_gap_losses_npixel, 0))
+            if any(z_gap_losses_npixel):
+                loss_z_gap_planes_npixel = sum(
+                    (
+                        torch.mean(torch.cat(z_gap_losses_npixel_batch, 0)) /
+                        len(z_gap_losses_npixel_batch)
+                    )
+                    for z_gap_losses_npixel_batch in z_gap_losses_npixel
+                        if z_gap_losses_npixel_batch
+                )
             else:
                 loss_z_gap_planes_npixel = torch.tensor(0.0)
             loss_tot += self.lambda_loss_z_gap_planes_npixel * loss_z_gap_planes_npixel
@@ -292,17 +330,29 @@ class GapWise(CustomLoss):
         if skip_adc and skip_npixels:
             return gap_losses_adc, gap_losses_npixel
 
-        for gap in torch.unique(infill_coords[:, coord_idx]).tolist():
-            if gap not in gaps:
-                continue
-            gap_coords = infill_coords[infill_coords[:, coord_idx] == gap]
+        gap_ranges = self._get_edge_ranges(
+            [
+                int(gap_coord)
+                for gap_coord in torch.unique(
+                    infill_coords[:, coord_idx]
+                ).tolist()
+                    if int(gap_coord) in gaps
+            ]
+        )
+        for gap_start, gap_end in gap_ranges:
+            gap_mask = sum(
+                infill_coords[:, coord_idx] == gap_coord
+                for gap_coord in range(gap_start, gap_end + 1)
+            )
+            gap_coords = infill_coords[gap_mask.type(torch.bool)]
 
             if not skip_adc:
                 gap_losses_adc.append(
                     self.crit(
                         s_pred.features_at_coordinates(gap_coords).squeeze().sum(),
                         s_target.features_at_coordinates(gap_coords).squeeze().sum()
-                    ).view(1) # 0d -> 1d for cat operation later
+                    ).view(1) / # 0d -> 1d for cat operation later
+                    len(gap_coords)
                 )
 
             if not skip_npixels:
@@ -312,20 +362,29 @@ class GapWise(CustomLoss):
                             torch.clamp(
                                 s_pred.features_at_coordinates(gap_coords).squeeze(),
                                 min=0.0, max=self.adc_threshold
-                            ).sum(dtype=s_pred.F.dtype) *
+                            ).sum(dtype=s_pred.F.dtype) /
+                            len(gap_coords) *
                             (1 / self.adc_threshold)
                         ),
                         (
                             torch.clamp(
                                 s_target.features_at_coordinates(gap_coords).squeeze(),
                                 min=0.0, max=self.adc_threshold
-                            ).sum(dtype=s_target.F.dtype) *
+                            ).sum(dtype=s_target.F.dtype) /
+                            len(gap_coords) *
                             (1 / self.adc_threshold)
                         )
                     ).view(1)
                 )
 
         return gap_losses_adc, gap_losses_npixel
+
+    @staticmethod
+    def _get_edge_ranges(nums):
+        nums = sorted(set(nums))
+        discontinuities = [[s, e] for s, e in zip(nums, nums[1:]) if s+1 < e]
+        edges = iter(nums[:1] + sum(discontinuities, []) + nums[-1:])
+        return list(zip(edges, edges))
 
 
 # NOTE I dont know how to get this working, in current state seems to compute Chamfer distance
