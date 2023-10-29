@@ -24,7 +24,7 @@ def main(args):
     net = CompletionNetSigMask(
         (conf.vmap["n_voxels"]["x"], conf.vmap["n_voxels"]["y"], conf.vmap["n_voxels"]["z"]),
         in_nchannel=conf.n_feats_in + 1, out_nchannel=conf.n_feats_out,
-        final_pruning_threshold=conf.adc_threshold
+        final_pruning_threshold=conf.adc_threshold, **conf.model_params
     )
     net.to(device)
     print(
@@ -49,7 +49,7 @@ def main(args):
         dataset_train,
         batch_size=conf.batch_size,
         collate_fn=collate_fn,
-        num_workers=max(conf.max_num_workers, conf.batch_size),
+        num_workers=min(conf.max_num_workers, conf.batch_size),
         shuffle=True
     )
     dataset_valid = LarndDataset(
@@ -65,7 +65,7 @@ def main(args):
         dataset_valid,
         batch_size=conf.batch_size,
         collate_fn=collate_fn,
-        num_workers=max(conf.max_num_workers, conf.batch_size),
+        num_workers=min(conf.max_num_workers, conf.batch_size),
         shuffle=True # Shuffling to see different events in saved validation image
     )
 

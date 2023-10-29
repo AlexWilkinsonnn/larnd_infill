@@ -2,6 +2,7 @@ import torch; import  torch.nn as nn
 import MinkowskiEngine as ME
 
 
+# NOTE not being used
 class CompletionNet(nn.Module):
 
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
@@ -327,21 +328,27 @@ class CompletionNet(nn.Module):
 
 
 class CompletionNetSigMask(nn.Module):
-
-    ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
-    DEC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
-
     def __init__(
-        self, pointcloud_size, in_nchannel=1, out_nchannel=1, final_pruning_threshold=None
+        self,
+        pointcloud_size,
+        in_nchannel=1, out_nchannel=1,
+        final_pruning_threshold=None,
+        final_layer="tanh",
+        nonlinearity="elu",
+        enc_ch=[16, 32, 64, 128, 256, 512, 1024],
+        dec_ch=[16, 32, 64, 128, 256, 512, 1024]
     ):
         nn.Module.__init__(self)
 
         self.pointcloud_size = pointcloud_size
         self.final_pruning_threshold = final_pruning_threshold
 
-        # Input sparse tensor must have tensor stride 128.
-        enc_ch = self.ENC_CHANNELS
-        dec_ch = self.DEC_CHANNELS
+        if nonlinearity == "elu":
+            nonlinearity = ME.MinkowskiELU()
+        elif nonlinearity == "relu":
+            nonlinearity = ME.MinkowskiReLU()
+        else:
+            raise ValueError("nonlinearity: {} not valid".format(nonlinearity))
 
         # Encoder
         self.enc_block_s1 = nn.Sequential(
@@ -528,6 +535,14 @@ class CompletionNetSigMask(nn.Module):
         # pruning
         self.pruning = ME.MinkowskiPruning()
 
+        # final layer
+        if final_layer == "none":
+            self.final_layer = lambda t: t
+        elif final_layer == "tanh":
+            self.final_layer = ME.MinkowskiTanh()
+        else:
+            raise ValueError("final_layer: {} not valid".format(final_layer))
+
     def _pruning_layer(self, t, keep):
         if keep.sum().item() == 0:
             return t
@@ -658,13 +673,14 @@ class CompletionNetSigMask(nn.Module):
         ###################################################
         out = self.dec_out_conv(dec_s1)
 
-        keep_out = (out.F > 0).squeeze()
-        out = self._pruning_layer(out, keep_out)
         out = self._final_pruning_layer(out)
+
+        out = self.final_layer(out)
 
         return out
 
 
+# NOTE not being used
 class MyCompletionNet(nn.Module):
 
     ENC_CHANNELS = [16, 32, 64, 128, 256, 512, 1024]
