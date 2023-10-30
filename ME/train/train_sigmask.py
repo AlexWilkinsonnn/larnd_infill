@@ -285,21 +285,21 @@ def plot_pred(
                 coords_packed[0].append(coord[0].item())
                 coords_packed[1].append(coord[1].item())
                 coords_packed[2].append(coord[2].item())
-                feats_list.append(feat.item())
+                feats_list.append(int(feat.item()))
             coords_packed_predonly[0].append(coord[0].item())
             coords_packed_predonly[1].append(coord[1].item())
             coords_packed_predonly[2].append(coord[2].item())
-            feats_list_predonly.append(feat.item())
+            feats_list_predonly.append(int(feat.item()))
         for coord, feat in zip(coords_target, feats_target):
             coords_target_packed[0].append(coord[0].item())
             coords_target_packed[1].append(coord[1].item())
             coords_target_packed[2].append(coord[2].item())
-            feats_list_target.append(feat.item())
+            feats_list_target.append(int(feat.item()))
             if coord[0].item() not in batch_mask_x and coord[2].item() not in batch_mask_z:
                 coords_packed[0].append(coord[0].item())
                 coords_packed[1].append(coord[1].item())
                 coords_packed[2].append(coord[2].item())
-                feats_list.append(feat.item())
+                feats_list.append(int(feat.item()))
 
         for coord, feat in zip(coords_in, feats_in):
             if feat[-1]:

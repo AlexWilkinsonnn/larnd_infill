@@ -250,21 +250,21 @@ def plot_pred(
                 coords_packed[0].append(coord[0].item())
                 coords_packed[1].append(coord[1].item())
                 coords_packed[2].append(coord[2].item())
-                feats_list.append(feat.item())
+                feats_list.append(int(feat.item()))
             coords_packed_predonly[0].append(coord[0].item())
             coords_packed_predonly[1].append(coord[1].item())
             coords_packed_predonly[2].append(coord[2].item())
-            feats_list_predonly.append(feat.item())
+            feats_list_predonly.append(int(feat.item()))
         for coord, feat in zip(coords_target, feats_target):
             coords_target_packed[0].append(coord[0].item())
             coords_target_packed[1].append(coord[1].item())
             coords_target_packed[2].append(coord[2].item())
-            feats_list_target.append(feat.item())
+            feats_list_target.append(int(feat.item()))
             if coord[0].item() not in batch_mask_x and coord[2].item() not in batch_mask_z:
                 coords_packed[0].append(coord[0].item())
                 coords_packed[1].append(coord[1].item())
                 coords_packed[2].append(coord[2].item())
-                feats_list.append(feat.item())
+                feats_list.append(int(feat.item()))
 
         for coord, feat in zip(coords_in, feats_in):
             if feat[-1]:
@@ -282,7 +282,7 @@ def plot_pred(
             vmap["x"], vmap["y"], vmap["z"],
             batch_mask_x, batch_mask_z,
             saveas=os.path.join(save_dir, "{}_batch{}_pred.pdf".format(save_name_prefix, i_batch)),
-            max_feat=150,
+            max_feat=int(1 / scalefactors[0]),
             signal_mask_gap_coords=coords_sigmask_gap_packed,
             signal_mask_active_coords=coords_sigmask_active_packed
         )
@@ -294,7 +294,7 @@ def plot_pred(
             saveas=os.path.join(
                 save_dir, "{}_batch{}_pred_predonly.pdf".format(save_name_prefix, i_batch)
             ),
-            max_feat=150,
+            max_feat=int(1 / scalefactors[0]),
             signal_mask_gap_coords=coords_sigmask_gap_packed,
             signal_mask_active_coords=coords_sigmask_active_packed
         )
@@ -306,7 +306,7 @@ def plot_pred(
             saveas=os.path.join(
                 save_dir, "{}_batch{}_target.pdf".format(save_name_prefix, i_batch)
             ),
-            max_feat=150,
+            max_feat=int(1 / scalefactors[0]),
             signal_mask_gap_coords=coords_sigmask_gap_packed,
             signal_mask_active_coords=coords_sigmask_active_packed
         )

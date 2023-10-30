@@ -81,16 +81,6 @@ def main(args):
     )
 
 
-
-
-    
-    
-
-
-
-
-
-
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
