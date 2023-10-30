@@ -561,7 +561,7 @@ class CompletionNetSigMask(nn.Module):
             (t.C[:, 3] < self.pointcloud_size[2])
         )
         if self.final_pruning_threshold is not None:
-            keep = keep + (t.F[:, 0] > self.final_pruning_threshold)
+            keep = keep * (t.F[:, 0] > self.final_pruning_threshold)
 
         keep = keep.squeeze()
 
