@@ -540,6 +540,8 @@ class CompletionNetSigMask(nn.Module):
             self.final_layer = lambda t: t
         elif final_layer == "tanh":
             self.final_layer = ME.MinkowskiTanh()
+        elif final_layer == "hardtanh":
+            self.final_layer = ME.MinkowskiHardtanh(min_value=0.0, max_value=1.0)
         else:
             raise ValueError("final_layer: {} not valid".format(final_layer))
 
@@ -673,9 +675,9 @@ class CompletionNetSigMask(nn.Module):
         ###################################################
         out = self.dec_out_conv(dec_s1)
 
-        out = self._final_pruning_layer(out)
-
         out = self.final_layer(out)
+
+        out = self._final_pruning_layer(out)
 
         return out
 
