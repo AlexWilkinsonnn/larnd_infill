@@ -32,12 +32,11 @@ def main(args):
         if line == "== Validation Loop ==":
             loss_line = losses[i_line + 2]
             tot_loss = float(loss_line.split("total=")[1].split(" ")[0])
-            epoch_line = losses[i_line + 5]
+            epoch_line = losses[i_line + (5 if not args.legacy else 3)]
             epoch = int(epoch_line.split("Epoch ")[1].split(" ")[0])
             validation_epochs.append(epoch)
             validation_losses["total"].append(tot_loss)
             loss_line_comps = loss_line.split("total=")[1].split(" ")[1:]
-            print(loss_line_comps)
             while loss_line_comps:
                 el = loss_line_comps.pop()
                 if el[0] == "(" and el[-1] == ")":
@@ -63,6 +62,7 @@ def parse_arguments():
     parser.add_argument("loss_file", type=str)
 
     parser.add_argument("--iters_per_epoch", type=int, default=-1)
+    parser.add_argument("--legacy", action="store_true")
 
     return parser.parse_args()
 
