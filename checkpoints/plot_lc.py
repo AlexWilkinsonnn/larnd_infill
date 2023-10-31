@@ -1,4 +1,5 @@
 import argparse
+from collections import defaultdict
 
 from matplotlib import pyplot as plt
 
@@ -8,7 +9,7 @@ def main(args):
         losses = [ loss_line.rstrip() for loss_line in f ]
 
     training_epochs, training_losses = [], []
-    validation_epochs, validation_losses = [], []
+    validation_epochs, validation_losses = [], defaultdict(list)
 
     if args.iters_per_epoch == -1:
         iters_per_epoch = int(losses[0].split(": ")[1])
@@ -30,17 +31,28 @@ def main(args):
 
         if line == "== Validation Loop ==":
             loss_line = losses[i_line + 2]
-            tot_loss = float(loss_line.split("total=")[1])
-            epoch_line = losses[i_line + 3]
+            tot_loss = float(loss_line.split("total=")[1].split(" ")[0])
+            epoch_line = losses[i_line + 5]
             epoch = int(epoch_line.split("Epoch ")[1].split(" ")[0])
             validation_epochs.append(epoch)
-            validation_losses.append(tot_loss)
+            validation_losses["total"].append(tot_loss)
+            loss_line_comps = loss_line.split("total=")[1].split(" ")[1:]
+            print(loss_line_comps)
+            while loss_line_comps:
+                el = loss_line_comps.pop()
+                if el[0] == "(" and el[-1] == ")":
+                    weighted_loss = float(el[1:-1])
+                    loss_name = loss_line_comps.pop().split("=")[0]
+                    validation_losses[loss_name].append(weighted_loss)
 
-    plt.plot(training_epochs, training_losses, label="train")
-    plt.plot(validation_epochs, validation_losses, label="valid")
+    plt.plot(training_epochs, training_losses, label="train - total")
+    validation_losses_total = validation_losses.pop("total")
+    plt.plot(validation_epochs, validation_losses_total, label="valid - total")
+    for loss_name, losses in validation_losses.items():
+        plt.plot(validation_epochs, losses, "--", label="valid - {} (weighted)".format(loss_name))
     plt.xlabel("Epoch")
-    plt.ylabel("total_loss")
-    plt.ylim(0, 1.2 * max(validation_losses))
+    plt.ylabel("loss")
+    plt.ylim(0, 1.2 * max(validation_losses_total))
     plt.legend()
     plt.show()
 
