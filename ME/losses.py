@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections import namedtuple
 
 import MinkowskiEngine as ME
 import torch; import torch.nn as nn; from torch.nn.utils.rnn import pad_sequence
@@ -32,7 +33,7 @@ class BCE:
 
 class CustomLoss(ABC):
     @abstractmethod
-    def __init__(self, conf):
+    def __init__(self, conf, override_opts={}):
         pass
 
     @abstractmethod
@@ -45,7 +46,14 @@ class CustomLoss(ABC):
 
 
 class PixelWise(CustomLoss):
-    def __init__(self, conf):
+    def __init__(self, conf, override_opts={}):
+        if override_opts:
+            conf_dict = conf._asdict()
+            for opt_name, opt_val in override_opts.items():
+                conf_dict[opt_name] = opt_val
+            conf_namedtuple = namedtuple("config", conf_dict)
+            conf = conf_namedtuple(**conf_dict)
+
         if conf.loss_func == "PixelWise_L1Loss":
             self.crit = nn.L1Loss()
             self.crit_sumreduction = nn.L1Loss(reduction="sum")
@@ -169,13 +177,26 @@ class GapWise(CustomLoss):
     """
     Loss on the summed adc + summed active pixels in planes of x or z = const in infill regions
     """
-    def __init__(self, conf):
+    def __init__(self, conf, override_opts={}):
+        if override_opts:
+            conf_dict = conf._asdict()
+            for opt_name, opt_val in override_opts.items():
+                conf_dict[opt_name] = opt_val
+            conf_namedtuple = namedtuple("config", conf_dict)
+            conf = conf_namedtuple(**conf_dict)
+
         if conf.loss_func == "GapWise_L1Loss":
-            self.crit = nn.L1Loss()
-            self.crit_sumreduction = nn.L1Loss(reduction="sum")
+            self.crit_adc = nn.L1Loss()
+            self.crit_adc_sumreduction = nn.L1Loss(reduction="sum")
+            self.crit_npixel = nn.L1Loss()
         elif conf.loss_func == "GapWise_MSELoss":
-            self.crit = nn.MSELoss()
-            self.crit_sumreduction = nn.MSELoss(reduction="sum")
+            self.crit_adc = nn.MSELoss()
+            self.crit_adc_sumreduction = nn.MSELoss(reduction="sum")
+            self.crit_npixel = nn.MSELoss()
+        # elif conf.loss_func == "GapWise_L1Loss_BCELoss":
+        #     self.crit_adc = nn.L1Loss()
+        #     self.crit_adc_sumreduction = nn.L1Loss(reduction="sum")
+        #     self.crit_npixel = nn.BCELoss()
 
         self.adc_threshold = conf.adc_threshold
 
@@ -217,6 +238,7 @@ class GapWise(CustomLoss):
         z_gap_losses_adc, z_gap_losses_npixel = [], []
         for i_batch in range(len(data["mask_x"])):
             batch_infill_coords = infill_coords[infill_coords[:, 0] == i_batch]
+
             x_gap_losses_adc_batch, x_gap_losses_npixel_batch = self._get_gap_losses(
                 s_pred, s_target,
                 set(data["mask_x"][i_batch]),
@@ -310,12 +332,12 @@ class GapWise(CustomLoss):
 
     def _get_loss_at_coords(self, s_pred, s_target, coords):
         if coords.shape[0]:
-            loss = self.crit(
+            loss = self.crit_adc(
                 s_pred.features_at_coordinates(coords).squeeze(),
                 s_target.features_at_coordinates(coords).squeeze()
             )
         else:
-            loss = self.crit_sumreduction(
+            loss = self.crit_adc_sumreduction(
                 s_pred.features_at_coordinates(coords).squeeze(),
                 s_target.features_at_coordinates(coords).squeeze()
             )
@@ -348,7 +370,7 @@ class GapWise(CustomLoss):
 
             if not skip_adc:
                 gap_losses_adc.append(
-                    self.crit(
+                    self.crit_adc(
                         s_pred.features_at_coordinates(gap_coords).squeeze().sum(),
                         s_target.features_at_coordinates(gap_coords).squeeze().sum()
                     ).view(1) / # 0d -> 1d for cat operation later
@@ -357,7 +379,7 @@ class GapWise(CustomLoss):
 
             if not skip_npixels:
                 gap_losses_npixel.append(
-                    self.crit(
+                    self.crit_npixel(
                         (
                             torch.clamp(
                                 s_pred.features_at_coordinates(gap_coords).squeeze(),
@@ -394,7 +416,14 @@ class Chamfer(CustomLoss):
     """
     Loss based around Chamfer loss for pointclouds
     """
-    def __init__(self, conf):
+    def __init__(self, conf, override_opts={}):
+        if override_opts:
+            conf_dict = conf._asdict()
+            for opt_name, opt_val in override_opts.items():
+                conf_dict[opt_name] = opt_val
+            conf_namedtuple = namedtuple("config", conf_dict)
+            conf = conf_namedtuple(**conf_dict)
+
         self.chamfer_distance = ChamferDistance()
 
         self.device = torch.device(conf.device)

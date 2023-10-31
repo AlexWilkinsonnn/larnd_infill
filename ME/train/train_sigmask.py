@@ -1,9 +1,11 @@
 import time, argparse, os
+
 from collections import defaultdict
 
 import yaml
 import numpy as np
 from tqdm import tqdm
+from matplotlib import pyplot as plt; from matplotlib.backends.backend_pdf import PdfPages
 
 import torch; import torch.optim as optim; import torch.nn as nn
 import MinkowskiEngine as ME
@@ -13,7 +15,7 @@ from larpixsoft.detector import set_detector_properties
 from ME.config_parser import get_config
 from ME.dataset import LarndDataset, CollateCOO
 from ME.models.completion_net import CompletionNetSigMask
-from ME.losses import init_loss_func
+from ME.losses import init_loss_func, GapWise
 from aux import plot_ndlar_voxels_2
 
 def main(args):
@@ -75,6 +77,8 @@ def main(args):
 
     loss_cls = init_loss_func(conf)
     loss_scalefactors = loss_cls.get_names_scalefactors()
+    # Using methods in this for accuracy metrics in validation
+    gapwise_cls = GapWise(conf, override_opts={ "loss_func" : "GapWise_L1Loss" })
 
     net.train()
 
@@ -182,6 +186,9 @@ def main(args):
         # Validation loop
         write_log_str(conf.checkpoint_dir, "== Validation Loop ==")
         losses_acc_valid = defaultdict(list)
+        losses_acc_valid_unscaled = defaultdict(list)
+        x_gap_abs_diffs, x_gap_frac_diffs = [], []
+        z_gap_abs_diffs, z_gap_frac_diffs = [], []
         for data in tqdm(dataloader_valid, desc="Val Loop"):
             try:
                 s_in = ME.SparseTensor(
@@ -202,11 +209,97 @@ def main(args):
 
             losses_acc_valid["tot"].append(loss_tot.item())
             for loss_name, loss in losses.items():
-                losses_acc[loss_name].append(loss.item())
+                losses_acc_valid[loss_name].append(loss.item())
+
+            # Get loss metrics without scalefactors applied
+            s_pred_unscaled = ME.SparseTensor(
+                coordinates=s_pred.C, features=s_pred.F * (1 / conf.scalefactors[0])
+            )
+            s_in_unscaled = ME.SparseTensor(
+                coordinates=s_in.C,
+                features=torch.cat(
+                    [
+                        s_in.F[:,[0]] * (1 / conf.scalefactors[0]),
+                        s_in.F[:,[1]] * (1 / conf.scalefactors[1]),
+                        s_in.F[:,[2]] * (1 / conf.scalefactors[1])
+                    ],
+                    dim=1
+                )
+            )
+            s_target_unscaled = ME.SparseTensor(
+                coordinates=s_target.C, features=s_target.F * (1 / conf.scalefactors[0])
+            )
+            loss_tot_unscaled, losses_unscaled = loss_cls.calc_loss(
+                s_pred_unscaled, s_in_unscaled, s_target_unscaled, data
+            )
+
+            losses_acc_valid_unscaled["tot"].append(loss_tot_unscaled.item())
+            for loss_name, loss in losses_unscaled.items():
+                losses_acc_valid_unscaled[loss_name].append(loss.item())
+
+            # Get infill accuracy metrics
+            infill_coords, infill_coords_zero, infill_coords_nonzero = (
+                gapwise_cls._get_infill_coords(s_in_unscaled, s_target_unscaled)
+            )
+
+            for i_batch in range(len(data["mask_x"])):
+                batch_infill_coords = infill_coords[infill_coords[:, 0] == i_batch]
+
+                x_gap_ranges = gapwise_cls._get_edge_ranges(
+                    [
+                        int(gap_coord)
+                        for gap_coord in torch.unique(
+                            batch_infill_coords[:, 1]
+                        ).tolist()
+                            if int(gap_coord) in set(data["mask_x"][i_batch])
+                    ]
+                )
+
+                for gap_start, gap_end in x_gap_ranges:
+                    gap_mask = sum(
+                        batch_infill_coords[:, 1] == gap_coord
+                        for gap_coord in range(gap_start, gap_end + 1)
+                    )
+                    gap_coords = batch_infill_coords[gap_mask.type(torch.bool)]
+                    pred_sum = (
+                        s_pred_unscaled.features_at_coordinates(gap_coords).squeeze().sum().item()
+                    )
+                    target_sum = (
+                        s_target_unscaled.features_at_coordinates(gap_coords).squeeze().sum().item()
+                    )
+                    x_gap_abs_diffs.append(pred_sum - target_sum)
+                    x_gap_frac_diffs.append((pred_sum - target_sum) / max(target_sum, 1.0))
+
+                z_gap_ranges = gapwise_cls._get_edge_ranges(
+                    [
+                        int(gap_coord)
+                        for gap_coord in torch.unique(
+                            batch_infill_coords[:, 3]
+                        ).tolist()
+                            if int(gap_coord) in set(data["mask_z"][i_batch])
+                    ]
+                )
+
+                for gap_start, gap_end in z_gap_ranges:
+                    gap_mask = sum(
+                        batch_infill_coords[:, 3] == gap_coord
+                        for gap_coord in range(gap_start, gap_end + 1)
+                    )
+                    gap_coords = batch_infill_coords[gap_mask.type(torch.bool)]
+                    pred_sum = (
+                        s_pred_unscaled.features_at_coordinates(gap_coords).squeeze().sum().item()
+                    )
+                    target_sum = (
+                        s_target_unscaled.features_at_coordinates(gap_coords).squeeze().sum().item()
+                    )
+                    z_gap_abs_diffs.append(pred_sum - target_sum)
+                    z_gap_frac_diffs.append((pred_sum - target_sum) / max(target_sum, 1.0))
 
         loss_str = (
             "Validation with {} images:\n".format(len(dataset_valid)) +
-			get_loss_str(losses_acc_valid, loss_scalefactors)
+			get_loss_str(losses_acc_valid, loss_scalefactors) +
+            "\nUnscaled:\n" +
+			get_loss_str(losses_acc_valid_unscaled, loss_scalefactors)
         )
         write_log_str(conf.checkpoint_dir, loss_str)
         # Plot last prediction of validation loop
@@ -220,6 +313,31 @@ def main(args):
             save_dir=os.path.join(conf.checkpoint_dir, "preds"),
             save_tensors=True
         )
+
+        pdf_val_plots = PdfPages(
+            os.path.join(
+                conf.checkpoint_dir, "preds", "epoch{}-valid_summary_plots.pdf".format(epoch)
+            )
+        )
+        gen_val_histo(
+            x_gap_abs_diffs, 200, (-500,500), pdf_val_plots,
+            "Absolute x Gap Summed ADC Differences", r"$\sum_{x gap} Pred - \sum_{x gap} True$"
+        )
+        gen_val_histo(
+            x_gap_frac_diffs, 200, (-2.0,2.0), pdf_val_plots,
+            "Absolute x Gap Summed ADC Fractional Differences",
+            r"$\frac{\sum_{x gap} Pred - \sum_{xjgap} True}{\sum_{x gap} True}$"
+        )
+        gen_val_histo(
+            z_gap_abs_diffs, 200, (-500,500), pdf_val_plots,
+            "Absolute z Gap Summed ADC Differences", r"$\sum_{z gap} Pred - \sum_{z gap} True$"
+        )
+        gen_val_histo(
+            z_gap_frac_diffs, 200, (-2.0,2.0), pdf_val_plots,
+            "Absolute z Gap Summed ADC Fractional Differences",
+            r"$\frac{\sum_{z gap} Pred - \sum_{z gap} True}{\sum_{z gap} True}$"
+        )
+        pdf_val_plots.close()
 
 
 def write_log_str(checkpoint_dir, log_str, print_str=True):
@@ -380,6 +498,16 @@ def plot_pred(
                 "w"
             ) as f:
                 yaml.dump(target_dict, f)
+
+
+def gen_val_histo(x, bins, range, pdf, title, xlabel):
+    fig, ax = plt.subplots(figsize=(12,8))
+    ax.hist(x, bins=bins, range=range, histtype="step")
+    ax.set_title(title, fontsize=16)
+    ax.grid(visible=True)
+    ax.set_xlabel(xlabel, fontsize=12)
+    pdf.savefig(bbox_inches="tight")
+    plt.close()
 
 
 def parse_arguments():

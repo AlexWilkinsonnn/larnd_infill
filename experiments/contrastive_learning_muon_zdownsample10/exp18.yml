@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_worders: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/contrastive_learning_muon_zdownsample10"
-name: "exp9"
+name: "exp18"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/contrastive_learning_muon_zdownsample10"
 vmap_path: "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"
@@ -25,13 +25,12 @@ model_params:
 
 batch_size: 8
 initial_lr: 0.01
-loss_func: "PixelWise_L1Loss"
+loss_func: "GapWise_L1Loss"
 epochs: 200
 lr_decay_iter: 20000
 loss_infill_zero_weight: 0.1
-loss_infill_nonzero_weight: 1
-loss_active_zero_weight: 0
-loss_active_nonzero_weight: 0
-loss_infill_weight: 0
-loss_active_weight: 0
-loss_infill_sum_weight: 1
+loss_infill_nonzero_weight: 1.0
+loss_x_gap_planes_adc_weight: 1.0
+loss_x_gap_planes_npixel_weight: 0
+loss_z_gap_planes_adc_weight: 1.0
+loss_z_gap_planes_npixel_weight: 0

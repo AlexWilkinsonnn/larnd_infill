@@ -541,7 +541,7 @@ class CompletionNetSigMask(nn.Module):
         elif final_layer == "tanh":
             self.final_layer = ME.MinkowskiTanh()
         elif final_layer == "hardtanh":
-            self.final_layer = ME.MinkowskiHardtanh(min_value=0.0, max_value=1.0)
+            self.final_layer = ME.MinkowskiHardtanh(min_val=0.0, max_val=1.0)
         else:
             raise ValueError("final_layer: {} not valid".format(final_layer))
 
