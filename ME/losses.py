@@ -66,13 +66,13 @@ class PixelWise(CustomLoss):
         else:
             raise NotImplementedError("loss_func={} not valid".format(conf.loss_func))
 
-        self.lambda_loss_infill_zero = conf.loss_infill_zero_weight
-        self.lambda_loss_infill_nonzero = conf.loss_infill_nonzero_weight
-        self.lambda_loss_active_zero = conf.loss_active_zero_weight
-        self.lambda_loss_active_nonzero = conf.loss_active_nonzero_weight
-        self.lambda_loss_infill = conf.loss_infill_weight
-        self.lambda_loss_active = conf.loss_active_weight
-        self.lambda_loss_infill_sum = conf.loss_infill_sum_weight
+        self.lambda_loss_infill_zero = getattr(conf, "loss_infill_zero_weight", 0.0)
+        self.lambda_loss_infill_nonzero = getattr(conf, "loss_infill_nonzero_weight", 0.0)
+        self.lambda_loss_active_zero = getattr(conf, "loss_active_zero_weight", 0.0)
+        self.lambda_loss_active_nonzero = getattr(conf, "loss_active_nonzero_weight", 0.0)
+        self.lambda_loss_infill = getattr(conf, "loss_infill_weight", 0.0)
+        self.lambda_loss_active = getattr(conf, "loss_active_weight", 0.0)
+        self.lambda_loss_infill_sum = getattr(conf, "loss_infill_sum_weight", 0.0)
 
     def get_names_scalefactors(self):
         return {
@@ -200,13 +200,13 @@ class GapWise(CustomLoss):
 
         self.adc_threshold = conf.adc_threshold
 
-        self.lambda_loss_infill_zero = conf.loss_infill_zero_weight
-        self.lambda_loss_infill_nonzero = conf.loss_infill_nonzero_weight
-        self.lambda_loss_infill = conf.loss_infill_weight
-        self.lambda_loss_x_gap_planes_adc = conf.loss_x_gap_planes_adc_weight
-        self.lambda_loss_x_gap_planes_npixel = conf.loss_x_gap_planes_npixel_weight
-        self.lambda_loss_z_gap_planes_adc = conf.loss_z_gap_planes_adc_weight
-        self.lambda_loss_z_gap_planes_npixel = conf.loss_z_gap_planes_npixel_weight
+        self.lambda_loss_infill_zero = getattr(conf, "loss_infill_zero_weight", 0.0)
+        self.lambda_loss_infill_nonzero = getattr(conf, "loss_infill_nonzero_weight", 0.0)
+        self.lambda_loss_infill = getattr(conf, "loss_infill_weight", 0.0)
+        self.lambda_loss_x_gap_planes_adc = getattr(conf, "loss_x_gap_planes_adc_weight", 0.0)
+        self.lambda_loss_x_gap_planes_npixel = getattr(conf, "loss_x_gap_planes_npixel_weight", 0.0)
+        self.lambda_loss_z_gap_planes_adc = getattr(conf, "loss_z_gap_planes_adc_weight", 0.0)
+        self.lambda_loss_z_gap_planes_npixel = getattr(conf, "loss_z_gap_planes_npixel_weight", 0.0)
 
     def get_names_scalefactors(self):
         return {
@@ -434,7 +434,7 @@ class Chamfer(CustomLoss):
 
         self.device = torch.device(conf.device)
 
-        self.lambda_loss_infill_chamfer = conf.loss_infill_chamfer_weight
+        self.lambda_loss_infill_chamfer = getattr(conf, "loss_infill_chamfer_weight", 0.0)
 
     def get_names_scalefactors(self):
         return { "infill_chamfer" : self.lambda_loss_infill_chamfer }
