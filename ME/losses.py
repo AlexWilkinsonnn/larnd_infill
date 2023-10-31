@@ -202,6 +202,7 @@ class GapWise(CustomLoss):
 
         self.lambda_loss_infill_zero = conf.loss_infill_zero_weight
         self.lambda_loss_infill_nonzero = conf.loss_infill_nonzero_weight
+        self.lambda_loss_infill = conf.loss_infill_weight
         self.lambda_loss_x_gap_planes_adc = conf.loss_x_gap_planes_adc_weight
         self.lambda_loss_x_gap_planes_npixel = conf.loss_x_gap_planes_npixel_weight
         self.lambda_loss_z_gap_planes_adc = conf.loss_z_gap_planes_adc_weight
@@ -211,6 +212,7 @@ class GapWise(CustomLoss):
         return {
             "infill_zero" : self.lambda_loss_infill_zero,
             "infill_nonzero" : self.lambda_loss_infill_nonzero,
+            "infill" : self.lambda_loss_infill,
             "x_gap_planes_adc" : self.lambda_loss_x_gap_planes_adc,
             "x_gap_planes_npixel" : self.lambda_loss_x_gap_planes_npixel,
             "z_gap_planes_adc" : self.lambda_loss_z_gap_planes_adc,
@@ -233,6 +235,10 @@ class GapWise(CustomLoss):
             loss_infill_nonzero = self._get_loss_at_coords(s_pred, s_target, infill_coords_nonzero)
             loss_tot += self.lambda_loss_infill_nonzero * loss_infill_nonzero
             losses["infill_nonzero"] = loss_infill_nonzero
+        if self.lambda_loss_infill:
+            loss_infill = self._get_loss_at_coords(s_pred, s_target, infill_coords)
+            loss_tot += self.lambda_loss_infill * loss_infill
+            losses["infill"] = loss_infill
 
         x_gap_losses_adc, x_gap_losses_npixel = [], []
         z_gap_losses_adc, z_gap_losses_npixel = [], []
