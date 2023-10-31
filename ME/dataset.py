@@ -51,10 +51,9 @@ class LarndDataset(torch.utils.data.Dataset):
 
         if prep_type == DataPrepType.REFLECTION_NORANDOM:
             self.x_true_gap_padding = int(self.x_gap_spacing / 2 - self.x_gap_size / 2)
-            self.z_true_gap_padding = int(self.z_gap_spacing / 2 - self.z_gap_size / 2)
         else:
             self.x_true_gap_padding = 2 * self.x_gap_size
-            self.z_true_gap_padding = 2 * self.z_gap_size
+        self.z_true_gap_padding = 2 * self.z_gap_size
 
         self.x_smear_infill, self.y_smear_infill, self.z_smear_infill = xyz_smear_infill
         self.x_smear_active, self.y_smear_active, self.z_smear_active = xyz_smear_active
@@ -370,8 +369,8 @@ class LarndDataset(torch.utils.data.Dataset):
         }
 
     def _generate_random_mask(self):
-        if self.valid:
-            return self.x_true_gaps, self.z_true_gaps
+        # if self.valid:
+        #     return self.x_true_gaps, self.z_true_gaps
 
         x_gaps = (
             self.x_true_gaps +
@@ -386,8 +385,16 @@ class LarndDataset(torch.utils.data.Dataset):
             self.z_true_gaps +
             (
                 np.random.choice([1, -1]) *
-                np.random.randint(
-                    self.z_true_gap_padding, self.z_gap_spacing - self.z_true_gap_padding
+                (
+                    np.random.randint(
+                        self.z_true_gap_padding,
+                        int(self.z_gap_spacing / 2) - self.z_true_gap_padding
+                    )
+                    if np.random.choice([0, 1])
+                    else np.random.randint(
+                        int(self.z_gap_spacing / 2) + self.z_true_gap_padding,
+                        self.z_gap_spacing - self.z_true_gap_padding
+                    )
                 )
             )
         )
@@ -652,7 +659,8 @@ class DataPrepType(Enum):
 
 # Testing
 if __name__ == "__main__":
-    train_data_path = "/share/rcifdata/awilkins/larnd_infill_data/zdownsample10/train"
+    train_data_path = "/share/rcifdata/awilkins/larnd_infill_data/contrastive_learning_muon_zdownsample10/train"
+    # train_data_path = "/share/rcifdata/awilkins/larnd_infill_data/zdownsampe10/train"
     vmap_path = "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"
     with open(vmap_path, "r") as f:
         vmap = yaml.load(f, Loader=yaml.FullLoader)
@@ -663,11 +671,13 @@ if __name__ == "__main__":
     scalefactors = [1 / 300, 1 / 5]
     dataset = LarndDataset(
         train_data_path, DataPrepType.REFLECTION_NORANDOM, vmap, 2, 1, scalefactors,
-        ((-1, 2), (-1, 2), (-3, 4)), ((0, 1), (0, 1), (0, 1)),
-        max_dataset_size=10, seed=1
+        # ((-1, 2), (-1, 2), (-3, 4)), ((0, 1), (0, 1), (0, 1)),
+        ((0, 1), (0, 1), (0, 1)), ((0, 1), (0, 1), (0, 1)),
+        max_dataset_size=10, seed=2,
+        valid=True
     )
 
-    b_size = 2
+    b_size = 5
     dataloader = torch.utils.data.DataLoader(
         dataset, batch_size=b_size, collate_fn=collate_fn, num_workers=0, shuffle=False
     )
@@ -697,13 +707,13 @@ if __name__ == "__main__":
         batch = next(dataloader_itr)
     e = time.time()
 
-    print("Loaded {} images in {:.4f}s".format(b_size * num_iters, e - s))
-    print(batch["input_coords"].shape, batch["input_feats"].shape)
-    print(batch["target_coords"].shape, batch["target_feats"].shape)
-    print(
-        torch.unique(batch["input_coords"], dim=0).shape,
-        torch.unique(batch["target_coords"], dim=0).shape
-    )
+    # print("Loaded {} images in {:.4f}s".format(b_size * num_iters, e - s))
+    # print(batch["input_coords"].shape, batch["input_feats"].shape)
+    # print(batch["target_coords"].shape, batch["target_feats"].shape)
+    # print(
+    #     torch.unique(batch["input_coords"], dim=0).shape,
+    #     torch.unique(batch["target_coords"], dim=0).shape
+    # )
     # print(batch["signal_mask_active_feats"])
     # print(batch["signal_mask_gap_feats"])
     # print(batch["signal_mask_active_coords"].shape, batch["signal_mask_active_feats"].shape)
@@ -725,6 +735,11 @@ if __name__ == "__main__":
         )
     ):
         batch_mask_x, batch_mask_z = batch["mask_x"][i_batch], batch["mask_z"][i_batch]
+        print(dataset.x_true_gaps)
+        print(batch_mask_x)
+        print(dataset.z_true_gaps)
+        print(batch_mask_z)
+        batch_mask_z_set = set(batch_mask_z)
 
         coords_packed, feats_list = [[], [], []], []
         coords_sigmask_gap_packed = [[], [], []]
@@ -732,11 +747,17 @@ if __name__ == "__main__":
         coords_target_packed, feats_list_target = [[], [], []], []
 
         for coord, feat in zip(coords_target, feats_target):
+            # if feat[0].item() and coord[2].item() in batch_mask_z_set:
+            #     print("target", coord, feat)
+
             coords_packed[0].append(coord[0].item())
             coords_packed[1].append(coord[1].item())
             coords_packed[2].append(coord[2].item())
             feats_list.append(feat[0].item())
         for coord, feat in zip(coords_in, feats_in):
+            # if feat[0].item() and coord[2].item() in batch_mask_z_set:
+            #     print("input", coord, feat)
+
             if feat[-1]:
                 coords_sigmask_gap_packed[0].append(coord[0].item())
                 coords_sigmask_gap_packed[1].append(coord[1].item())
@@ -793,21 +814,21 @@ if __name__ == "__main__":
     #     signal_mask_active_coords=coords_packed_sigmask_active,
     #     max_feat=1
     # )
-    plot_ndlar_voxels_2(
-        coords_packed, [ feats[0].item() for feats in batch["input_feats"] ],
-        detector,
-        vmap["x"], vmap["y"], vmap["z"],
-        batch["mask_x"][0], batch["mask_z"][0],
-        saveas=(
-            "/home/awilkins/larnd_infill/larnd_infill/tests/input_adc_example{}_pretty.pdf".format(
-                os.path.basename(".".join(batch["data_path"][0].split(".")[:-1]))
-            )
-        ),
-        max_feat=1, min_feat=-1,
-        target_coords=coords_packed_target,
-        target_feats=[ feats[0].item() for feats in batch["target_feats"] ],
-        single_proj_pretty=True
-    )
+    # plot_ndlar_voxels_2(
+    #     coords_packed, [ feats[0].item() for feats in batch["input_feats"] ],
+    #     detector,
+    #     vmap["x"], vmap["y"], vmap["z"],
+    #     batch["mask_x"][0], batch["mask_z"][0],
+    #     saveas=(
+    #         "/home/awilkins/larnd_infill/larnd_infill/tests/input_adc_example{}_pretty.pdf".format(
+    #             os.path.basename(".".join(batch["data_path"][0].split(".")[:-1]))
+    #         )
+    #     ),
+    #     max_feat=1, min_feat=-1,
+    #     target_coords=coords_packed_target,
+    #     target_feats=[ feats[0].item() for feats in batch["target_feats"] ],
+    #     single_proj_pretty=True
+    # )
     # plot_ndlar_voxels_2(
     #     coords_packed, [ feats[2].item() for feats in batch["input_feats"] ],
     #     detector,
