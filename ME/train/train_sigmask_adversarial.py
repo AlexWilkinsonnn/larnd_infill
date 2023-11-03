@@ -136,8 +136,8 @@ def main(args):
                 (n_iter + 1) % conf.lr_decay_iter == 0
             ):
                 model.scheduler_step()
-                write_log_str(conf.checkpoint_dir, "LR G {}".format(scheduler_G.get_lr()))
-                write_log_str(conf.checkpoint_dir, "LR D {}".format(scheduler_D.get_lr()))
+                write_log_str(conf.checkpoint_dir, "LR G {}".format(model.scheduler_G.get_lr()))
+                write_log_str(conf.checkpoint_dir, "LR D {}".format(model.scheduler_D.get_lr()))
 
             n_iter += 1
 
