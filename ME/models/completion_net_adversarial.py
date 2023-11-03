@@ -193,7 +193,6 @@ class CompletionNetAdversarial(nn.Module):
             self.recent_losses_G_GAN.appendleft(self.loss_G_GAN.item())
             if np.mean(self.recent_losses_G_GAN) > self.D_stop_threshold:
                 self.stop_D_training = True
-                print(self.recent_losses_G_GAN)
             else:
                 self.stop_D_training = False
 

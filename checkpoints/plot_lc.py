@@ -4,6 +4,7 @@ from itertools import cycle
 
 from matplotlib import pyplot as plt; from matplotlib.lines import Line2D
 
+
 def main(args):
     with open(args.loss_file, "r") as f:
         losses = [ loss_line.rstrip() for loss_line in f ]
@@ -32,14 +33,14 @@ def main(args):
                 training_losses_D["D_tot"].append(
                     float(loss_line.split("D_tot=")[1].split(" ")[0])
                 )
-                training_losses_D["D_real"].append(
-                    float(loss_line.split("D_real=")[1].split(" ")[0])
-                )
-                training_losses_D["D_fake"].append(
-                    float(loss_line.split("D_fake=")[1].split(" ")[0])
-                )
+                # training_losses_D["D_real"].append(
+                #     float(loss_line.split("D_real=")[1].split(" ")[0])
+                # )
+                # training_losses_D["D_fake"].append(
+                #     float(loss_line.split("D_fake=")[1].split(" ")[0])
+                # )
                 training_losses_D["G_GAN"].append(
-                    float(loss_line.split("G_GAN=")[1].split(" ")[0])
+                    float(loss_line.split("G_GAN=")[1].split(" ")[1][1:-1])
                 )
 
         if line == "== Validation Loop ==":
@@ -78,6 +79,8 @@ def main(args):
     ax.set_ylim(0, 1.2 * max(validation_losses_total))
 
     if training_losses_D:
+        ax.plot(training_epochs, training_losses_D.pop("G_GAN"), "-.", label="G_GAN", c=next(colors))
+
         ax2 = ax.twinx()
         for loss_name, losses in training_losses_D.items():
             ax2.plot(training_epochs, losses, "-.", label=loss_name, c=next(colors))
