@@ -38,6 +38,9 @@ def main(args):
                 training_losses_D["D_fake"].append(
                     float(loss_line.split("D_fake=")[1].split(" ")[0])
                 )
+                training_losses_D["G_GAN"].append(
+                    float(loss_line.split("G_GAN=")[1].split(" ")[0])
+                )
 
         if line == "== Validation Loop ==":
             loss_line = losses[i_line + 2]
@@ -52,6 +55,9 @@ def main(args):
                 if el[0] == "(" and el[-1] == ")":
                     weighted_loss = float(el[1:-1])
                     loss_name = loss_line_comps.pop().split("=")[0]
+                    # I dont think we care about this on validation dataset, only for training
+                    if loss_name == "G_GAN":
+                        continue
                     validation_losses[loss_name].append(weighted_loss)
 
     fig, ax = plt.subplots()
