@@ -1,4 +1,7 @@
 import os
+from collections import deque
+
+import numpy as np
 
 import torch; import torch.optim as optim; import torch.nn as nn
 import MinkowskiEngine as ME
@@ -20,21 +23,34 @@ class CompletionNetAdversarial(nn.Module):
         ).to(self.device)
         self.net_D = InfillDiscriminator(1, 1).to(self.device)
 
-        self.optimizer_G = optim.SGD(
-            self.net_G.parameters(), lr=conf.initial_lr, momentum=0.9, weight_decay=1e-4
-        )
+        if conf.optimizer_G == "SGD":
+            self.optimizer_G = optim.SGD(self.net_G.parameters(), **conf.optimizer_G_params)
+        else:
+            raise ValueError("{} not valid optimzer_G selection".format(conf.optimizer_G))
+        if conf.optimizer_D == "SGD":
+            self.optimizer_D = optim.SGD(self.net_D.parameters(), **conf.optimizer_D_params)
+        else:
+            raise ValueError("{} not valid optimzer_D selection".format(conf.optimizer_D))
         self.scheduler_G = optim.lr_scheduler.ExponentialLR(self.optimizer_G, 0.95)
-        self.optimizer_D = optim.SGD(
-            self.net_D.parameters(), lr=conf.initial_lr, momentum=0.9, weight_decay=1e-4
-        )
         self.scheduler_D = optim.lr_scheduler.ExponentialLR(self.optimizer_D, 0.95)
 
         self.lossfunc_G = init_loss_func(conf)
         self.lossfunc_D = nn.BCEWithLogitsLoss() # vanilla, lsgan uses MSELoss
         self.lambda_loss_GAN = getattr(conf, "loss_GAN_weight", 0.0)
 
-        self.register_buffer("real_label", torch.tensor(1.0, device=self.device))
-        self.register_buffer("fake_label", torch.tensor(0.0, device=self.device))
+        # pause D training if it is too strong
+        if conf.D_training_stopper:
+            self.recent_losses_G_GAN = deque(
+                conf.D_training_stopper["window_len"] * [0],
+                maxlen=conf.D_training_stopper["window_len"]
+            )
+            self.D_stop_threshold = conf.D_training_stopper["stop_loss_threshold"]
+        else:
+            self.recent_losses_G_GAN = None
+        self.stop_D_training = False
+
+        self.register_buffer("real_label", torch.tensor(conf.real_label, device=self.device))
+        self.register_buffer("fake_label", torch.tensor(conf.fake_label, device=self.device))
 
         self.loss_D_fake = None
         self.loss_D_real = None
@@ -146,10 +162,12 @@ class CompletionNetAdversarial(nn.Module):
         self.loss_D_real = self.lossfunc_D(target_real, self.real_label.expand_as(target_real))
 
         self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
-        if torch.isnan(self.loss_D):
-            # print(pred_F)
-            print(pred_fake)
-            import sys; sys.exit()
+
+        # if torch.isnan(self.loss_D):
+        #     # print(pred_F)
+        #     print(pred_fake)
+        #     import sys; sys.exit()
+
         self.loss_D.backward()
 
     def _backward_G(self):
@@ -167,6 +185,17 @@ class CompletionNetAdversarial(nn.Module):
         self.loss_G = (self.lambda_loss_GAN * self.loss_G_GAN + self.loss_G_pix_tot)
 
         self.loss_G.backward()
+
+        self._update_D_stopper()
+
+    def _update_D_stopper(self):
+        if self.recent_losses_G_GAN is not None:
+            self.recent_losses_G_GAN.appendleft(self.loss_G_GAN.item())
+            if np.mean(self.recent_losses_G_GAN) > self.D_stop_threshold:
+                self.stop_D_training = True
+                print(self.recent_losses_G_GAN)
+            else:
+                self.stop_D_training = False
 
     def _prep_D_input(self, s):
         C, F = s.C.detach(), s.F.detach()
@@ -187,10 +216,11 @@ class CompletionNetAdversarial(nn.Module):
         self.forward()
 
         # update D
-        self._set_requires_grad(self.net_D, True)
-        self.optimizer_D.zero_grad()
-        self._backward_D()
-        self.optimizer_D.step()
+        if not self.stop_D_training:
+            self._set_requires_grad(self.net_D, True)
+            self.optimizer_D.zero_grad()
+            self._backward_D()
+            self.optimizer_D.step()
 
         # update G
         self._set_requires_grad(self.net_D, False)

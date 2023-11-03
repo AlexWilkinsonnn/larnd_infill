@@ -22,7 +22,14 @@ defaults = {
     "xyz_smear_infill" : ((-1, 2), (-1, 2), (-3, 4)),
     "xyz_smear_active" : ((0, 1), (0, 1), (0, 1)),
     "model_params" : {},
-    "train_script" : "train_sigmask"
+    "optimizer_G_params" : {},
+    "optimizer_D_params" : {},
+    "D_training_stopper" : {},
+    "optimizer_D" : "SGD",
+    "optimizer_G" : "SGD",
+    "train_script" : "train_sigmask",
+    "fake_label" : 0.0,
+    "real_label" : 1.0
 }
 
 mandatory_fields = {
@@ -33,7 +40,7 @@ mandatory_fields = {
     "max_dataset_size",
     "max_valid_dataset_size",
     "batch_size",
-    "initial_lr",
+    # "initial_lr",
     "loss_func",
     "epochs",
     "lr_decay_iter",
@@ -112,7 +119,6 @@ def get_config(config_file, overwrite_dict={}, prep_checkpoint_dir=True):
         )
         if not os.path.exists(os.path.join(config_dict["checkpoint_dir"], "preds")):
             os.makedirs(os.path.join(config_dict["checkpoint_dir"], "preds"))
-
 
     config_namedtuple = namedtuple("config", config_dict)
     config = config_namedtuple(**config_dict)
