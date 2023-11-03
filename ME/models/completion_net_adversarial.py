@@ -1,5 +1,202 @@
-import torch; import  torch.nn as nn
+import os
+
+import torch; import torch.optim as optim; import torch.nn as nn
 import MinkowskiEngine as ME
+
+from ME.losses import init_loss_func
+
+
+class CompletionNetAdversarial(nn.Module):
+    def __init__(self, conf):
+        super(CompletionNetAdversarial, self).__init__()
+
+        self.device = torch.device(conf.device)
+        self.checkpoint_dir = conf.checkpoint_dir
+
+        self.net_G = CompletionNetSigMask(
+            (conf.vmap["n_voxels"]["x"], conf.vmap["n_voxels"]["y"], conf.vmap["n_voxels"]["z"]),
+            in_nchannel=conf.n_feats_in + 1, out_nchannel=conf.n_feats_out,
+            final_pruning_threshold=conf.adc_threshold, **conf.model_params
+        ).to(self.device)
+        self.net_D = InfillDiscriminator(1, 1).to(self.device)
+
+        self.optimizer_G = optim.SGD(
+            self.net_G.parameters(), lr=conf.initial_lr, momentum=0.9, weight_decay=1e-4
+        )
+        self.scheduler_G = optim.lr_scheduler.ExponentialLR(self.optimizer_G, 0.95)
+        self.optimizer_D = optim.SGD(
+            self.net_D.parameters(), lr=conf.initial_lr, momentum=0.9, weight_decay=1e-4
+        )
+        self.scheduler_D = optim.lr_scheduler.ExponentialLR(self.optimizer_D, 0.95)
+
+        self.lossfunc_G = init_loss_func(conf)
+        self.lossfunc_D = nn.BCEWithLogitsLoss() # vanilla, lsgan uses MSELoss
+        self.lambda_loss_GAN = getattr(conf, "loss_GAN_weight", 0.0)
+
+        self.register_buffer("real_label", torch.tensor(1.0, device=self.device))
+        self.register_buffer("fake_label", torch.tensor(0.0, device=self.device))
+
+        self.loss_D_fake = None
+        self.loss_D_real = None
+        self.loss_D_real = None
+        self.loss_G_GAN = None
+        self.loss_G_pix_tot = None
+        self.loss_G_comps = None
+        self.loss_G = None
+
+        self.data = None
+        self.s_in = None
+        self.s_target = None
+        self.s_pred = None
+
+    def set_input(self, data):
+        self.data = data
+        self.s_in = ME.SparseTensor(
+            coordinates=data["input_coords"], features=data["input_feats"], device=self.device
+        )
+        self.s_target = ME.SparseTensor(
+            coordinates=data["target_coords"], features=data["target_feats"], device=self.device
+        )
+
+    def get_loss_names_weights(self):
+        ret = self.lossfunc_G.get_names_scalefactors()
+        ret["D_fake"] = 0.5
+        ret["D_real"] = 0.5
+        ret["D_tot"] = 1.0
+        ret["G_GAN"] = self.lambda_loss_GAN
+        ret["pixel_tot"] = 1.0
+        return ret
+
+    def get_current_losses(self, valid=False):
+        losses_ret = self.loss_G_comps
+        if not valid: # dont care how D does on unseen data
+            losses_ret["D_fake"] = self.loss_D_fake
+            losses_ret["D_real"] = self.loss_D_real
+            losses_ret["D_tot"] = self.loss_D
+        losses_ret["G_GAN"] = self.loss_G_GAN
+        losses_ret["pixel_tot"] = self.loss_G_pix_tot
+        losses_ret["tot"] = self.loss_G
+        for loss_name, loss in losses_ret.items():
+            losses_ret[loss_name] = loss.item()
+        return losses_ret
+
+    def get_current_visuals(self):
+        return { "s_in" : self.s_in, "s_target" : self.s_target, "s_pred" : self.s_pred }
+
+    def _set_requires_grad(self, nets, requires_grad=False):
+        if not isinstance(nets, list):
+            nets = [nets]
+        for net in nets:
+            if net is not None:
+                for param in net.parameters():
+                    param.requires_grad = requires_grad
+
+    def eval(self):
+        self.net_G.eval()
+        self.net_D.eval()
+
+    def train(self):
+        self.net_G.train()
+        self.net_D.train()
+
+    def scheduler_step(self):
+        self.scheduler_G.step()
+        self.scheduler_D.step()
+
+    def save_networks(self, suffix):
+        torch.save(
+            self.net_G.cpu().state_dict(),
+            os.path.join(self.checkpoint_dir, "netG_{}.pth".format(suffix))
+        )
+        torch.save(
+            self.net_D.cpu().state_dict(),
+            os.path.join(self.checkpoint_dir, "netD_{}.pth".format(suffix))
+        )
+        self.net_G.to(self.device)
+        self.net_D.to(self.device)
+
+    def test(self, compute_losses=False):
+        with torch.no_grad():
+            self.forward()
+            if compute_losses:
+                # compute gan loss
+                pred_tf = self._prep_D_input(self.s_pred)
+                pred_fake = self.net_D(pred_tf)
+                self.loss_G_GAN = self.lossfunc_D(pred_fake, self.real_label.expand_as(pred_fake))
+
+                # compute standard loss
+                self.loss_G_pix_tot, self.loss_G_comps = self.lossfunc_G.calc_loss(
+                    self.s_pred, self.s_in, self.s_target, self.data
+                )
+
+                # combine for final loss
+                self.loss_G = (self.lambda_loss_GAN * self.loss_G_GAN + self.loss_G_pix_tot)
+
+    def forward(self):
+        self.s_pred = self.net_G(self.s_in)
+
+    def _backward_D(self):
+        pred_tf = self._prep_D_input(self.s_pred)
+        target_tf = self._prep_D_input(self.s_target)
+
+        pred_fake = self.net_D(pred_tf)
+        self.loss_D_fake = self.lossfunc_D(pred_fake, self.fake_label.expand_as(pred_fake))
+
+        target_real = self.net_D(target_tf)
+        self.loss_D_real = self.lossfunc_D(target_real, self.real_label.expand_as(target_real))
+
+        self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
+        if torch.isnan(self.loss_D):
+            # print(pred_F)
+            print(pred_fake)
+            import sys; sys.exit()
+        self.loss_D.backward()
+
+    def _backward_G(self):
+        # check what D makes of the output
+        pred_tf = self._prep_D_input(self.s_pred)
+        pred_fake = self.net_D(pred_tf)
+        self.loss_G_GAN = self.lossfunc_D(pred_fake, self.real_label.expand_as(pred_fake))
+
+        # compute standard loss
+        self.loss_G_pix_tot, self.loss_G_comps = self.lossfunc_G.calc_loss(
+            self.s_pred, self.s_in, self.s_target, self.data
+        )
+
+        # combine for final loss
+        self.loss_G = (self.lambda_loss_GAN * self.loss_G_GAN + self.loss_G_pix_tot)
+
+        self.loss_G.backward()
+
+    def _prep_D_input(self, s):
+        C, F = s.C.detach(), s.F.detach()
+
+        # THIS IS IMPORTANT: no coordinates for a batch index causes avg pooling to create nan
+        active_batches = torch.unique(C[:, 0])
+        for i_batch in range(len(self.data["mask_x"])):
+            if i_batch not in active_batches:
+                # print(active_batches)
+                # print("Adding {} and {}".format(torch.tensor([[i_batch, 0, 0, 0]], device=C.device), torch.tensor([[0.0]], device=C.device)))
+                C = torch.cat([C, torch.tensor([[i_batch, 0, 0, 0]], device=C.device)])
+                F = torch.cat([F, torch.tensor([[0.0]], device=C.device)])
+
+        return ME.TensorField(coordinates=C.detach(), features=F.detach(), device=self.device)
+
+    def optimize_parameters(self):
+        # make prediction
+        self.forward()
+
+        # update D
+        self._set_requires_grad(self.net_D, True)
+        self.optimizer_D.zero_grad()
+        self._backward_D()
+        self.optimizer_D.step()
+
+        # update G
+        self._set_requires_grad(self.net_D, False)
+        self.optimizer_G.zero_grad()
+        self._backward_G()
+        self.optimizer_G.step()
 
 
 class CompletionNetSigMask(nn.Module):
@@ -13,7 +210,7 @@ class CompletionNetSigMask(nn.Module):
         enc_ch=[16, 32, 64, 128, 256, 512, 1024],
         dec_ch=[16, 32, 64, 128, 256, 512, 1024]
     ):
-        nn.Module.__init__(self)
+        super(CompletionNetSigMask, self).__init__()
 
         self.pointcloud_size = pointcloud_size
         self.final_pruning_threshold = final_pruning_threshold
@@ -266,7 +463,7 @@ class CompletionNetSigMask(nn.Module):
                 out.coordinate_map_key, strided_target_key, kernel_size=kernel_size, region_type=1
             )
             for _, curr_in in kernel_map.items():
-                target[curr_in[0].long()] = 1
+                arget[curr_in[0].long()] = 1
 
         return target
 
@@ -290,7 +487,7 @@ class CompletionNetSigMask(nn.Module):
         ###################################################
         dec_s32 = self.dec_block_s64s32_up(enc_s64, coordinates=enc_s32.coordinate_map_key)
         dec_s32 = self.dec_block_s32_norm(dec_s32)
-        
+
         dec_s32 = ME.cat((dec_s32, enc_s32))
 
         dec_s32 = self.dec_block_s32_conv(dec_s32)
@@ -300,7 +497,7 @@ class CompletionNetSigMask(nn.Module):
         ###################################################
         dec_s16 = self.dec_block_s32s16_up(dec_s32, coordinates=enc_s16.coordinate_map_key)
         dec_s16 = self.dec_block_s16_norm(dec_s16)
-        
+
         dec_s16 = ME.cat((dec_s16, enc_s16))
 
         dec_s16 = self.dec_block_s16_conv(dec_s16)
@@ -310,7 +507,7 @@ class CompletionNetSigMask(nn.Module):
         ###################################################
         dec_s8 = self.dec_block_s16s8_up(dec_s16, coordinates=enc_s8.coordinate_map_key)
         dec_s8 = self.dec_block_s8_norm(dec_s8)
-        
+
         dec_s8 = ME.cat((dec_s8, enc_s8))
 
         dec_s8 = self.dec_block_s8_conv(dec_s8)
@@ -320,7 +517,7 @@ class CompletionNetSigMask(nn.Module):
         ###################################################
         dec_s4 = self.dec_block_s8s4_up(dec_s8, coordinates=enc_s4.coordinate_map_key)
         dec_s4 = self.dec_block_s4_norm(dec_s4)
-        
+
         dec_s4 = ME.cat((dec_s4, enc_s4))
 
         dec_s4 = self.dec_block_s4_conv(dec_s4)
@@ -330,7 +527,7 @@ class CompletionNetSigMask(nn.Module):
         ###################################################
         dec_s2 = self.dec_block_s4s2_up(dec_s4, coordinates=enc_s2.coordinate_map_key)
         dec_s2 = self.dec_block_s2_norm(dec_s2)
-        
+
         dec_s2 = ME.cat((dec_s2, enc_s2))
 
         dec_s2 = self.dec_block_s2_conv(dec_s2)
@@ -340,7 +537,7 @@ class CompletionNetSigMask(nn.Module):
         ###################################################
         dec_s1 = self.dec_block_s2s1_up(dec_s2, coordinates=enc_s1.coordinate_map_key)
         dec_s1 = self.dec_block_s1_norm(dec_s1)
-        
+
         dec_s1 = ME.cat((dec_s1, enc_s1))
 
         dec_s1 = self.dec_block_s1_conv(dec_s1)
@@ -355,4 +552,165 @@ class CompletionNetSigMask(nn.Module):
         out = self._final_pruning_layer(out)
 
         return out
+
+class InfillDiscriminator(nn.Module):
+    def __init__(
+        self,
+        in_channel,
+        out_channel,
+        embedding_channel=1024,
+        channels=(32, 48, 64, 96, 128),
+        D=3
+    ):
+        super(InfillDiscriminator, self).__init__()
+
+        self.D = D
+
+        self.network_initialization(
+            in_channel,
+            out_channel,
+            channels=channels,
+            embedding_channel=embedding_channel,
+            kernel_size=3,
+            D=D,
+        )
+        self.weight_initialization()
+
+    def get_mlp_block(self, in_channel, out_channel):
+        return nn.Sequential(
+            ME.MinkowskiLinear(in_channel, out_channel, bias=False),
+            ME.MinkowskiBatchNorm(out_channel),
+            ME.MinkowskiLeakyReLU(),
+        )
+
+    def get_conv_block(self, in_channel, out_channel, kernel_size, stride):
+        return nn.Sequential(
+            ME.MinkowskiConvolution(
+                in_channel,
+                out_channel,
+                kernel_size=kernel_size,
+                stride=stride,
+                dimension=self.D,
+            ),
+            ME.MinkowskiBatchNorm(out_channel),
+            ME.MinkowskiLeakyReLU(),
+        )
+
+    def network_initialization(
+        self,
+        in_channel,
+        out_channel,
+        channels,
+        embedding_channel,
+        kernel_size,
+        D=3,
+    ):
+        self.mlp1 = self.get_mlp_block(in_channel, channels[0])
+        self.conv1 = self.get_conv_block(
+            channels[0],
+            channels[1],
+            kernel_size=kernel_size,
+            stride=1,
+        )
+        self.conv2 = self.get_conv_block(
+            channels[1],
+            channels[2],
+            kernel_size=kernel_size,
+            stride=2,
+        )
+
+        self.conv3 = self.get_conv_block(
+            channels[2],
+            channels[3],
+            kernel_size=kernel_size,
+            stride=2,
+        )
+
+        self.conv4 = self.get_conv_block(
+            channels[3],
+            channels[4],
+            kernel_size=kernel_size,
+            stride=2,
+        )
+        self.conv5 = nn.Sequential(
+            self.get_conv_block(
+                channels[1] + channels[2] + channels[3] + channels[4],
+                embedding_channel // 4,
+                kernel_size=3,
+                stride=2,
+            ),
+            self.get_conv_block(
+                embedding_channel // 4,
+                embedding_channel // 2,
+                kernel_size=3,
+                stride=2,
+            ),
+            self.get_conv_block(
+                embedding_channel // 2,
+                embedding_channel,
+                kernel_size=3,
+                stride=2,
+            ),
+        )
+
+        self.pool = ME.MinkowskiMaxPooling(kernel_size=3, stride=2, dimension=D)
+
+        self.global_max_pool = ME.MinkowskiGlobalMaxPooling()
+        self.global_avg_pool = ME.MinkowskiGlobalAvgPooling()
+
+        self.final = nn.Sequential(
+            self.get_mlp_block(embedding_channel * 2, 512),
+            ME.MinkowskiDropout(),
+            self.get_mlp_block(512, 512),
+            ME.MinkowskiLinear(512, out_channel, bias=True),
+        )
+
+        # No, Dropout, last 256 linear, AVG_POOLING 92%
+
+    def weight_initialization(self):
+        for m in self.modules():
+            if isinstance(m, ME.MinkowskiConvolution):
+                ME.utils.kaiming_normal_(m.kernel, mode="fan_out", nonlinearity="relu")
+
+            if isinstance(m, ME.MinkowskiBatchNorm):
+                nn.init.constant_(m.bn.weight, 1)
+                nn.init.constant_(m.bn.bias, 0)
+
+    def forward(self, x : ME.TensorField):
+        x = self.mlp1(x)
+        y = x.sparse()
+
+        y = self.conv1(y)
+        y1 = self.pool(y)
+
+        y = self.conv2(y1)
+        y2 = self.pool(y)
+
+        y = self.conv3(y2)
+        y3 = self.pool(y)
+
+        y = self.conv4(y3)
+        y4 = self.pool(y)
+
+        x1 = y1.slice(x)
+        x2 = y2.slice(x)
+        x3 = y3.slice(x)
+        x4 = y4.slice(x)
+
+        x = ME.cat(x1, x2, x3, x4)
+
+        y = self.conv5(x.sparse())
+        x1 = self.global_max_pool(y)
+        x2 = self.global_avg_pool(y)
+
+        # print("x2")
+        # print(x2)
+        # print(torch.isnan(x2.F).sum(), x2.F.size())
+        # print("y")
+        # print(y)
+        # print(torch.isnan(y.F).sum(), y.F.size())
+        # print(torch.unique(x.C[:, 0]))
+        # print("=======")
+
+        return self.final(ME.cat(x1, x2)).F
 

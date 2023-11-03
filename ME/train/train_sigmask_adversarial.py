@@ -14,27 +14,29 @@ from larpixsoft.detector import set_detector_properties
 
 from ME.config_parser import get_config
 from ME.dataset import LarndDataset, CollateCOO
-from ME.models.completion_net import CompletionNetSigMask
+from ME.models.completion_net_adversarial import CompletionNetAdversarial
 from ME.losses import init_loss_func, GapWise
 from aux import plot_ndlar_voxels_2
+
 
 def main(args):
     conf = get_config(args.config)
 
-    if conf.train_script != "train_sigmask":
-        raise ValueError("Cannot run this config with train_sigmask.py!")
+    if conf.train_script != "train_sigmask_adversarial":
+        raise ValueError("Cannot run this config with train_sigmask_adversarial.py!")
 
     device = torch.device(conf.device)
 
-    net = CompletionNetSigMask(
-        (conf.vmap["n_voxels"]["x"], conf.vmap["n_voxels"]["y"], conf.vmap["n_voxels"]["z"]),
-        in_nchannel=conf.n_feats_in + 1, out_nchannel=conf.n_feats_out,
-        final_pruning_threshold=conf.adc_threshold, **conf.model_params
-    )
-    net.to(device)
+    model = CompletionNetAdversarial(conf)
+    # XXX do I need to put the model params on gpu explicitly?
     print(
-        "Model has {:.1f} million parameters".format(
-            sum(params.numel() for params in net.parameters()) / 1e6
+        "Generator has {:.1f} million parameters".format(
+            sum(params.numel() for params in model.net_G.parameters()) / 1e6
+        )
+    )
+    print(
+        "Discriminator has {:.1f} million parameters".format(
+            sum(params.numel() for params in model.net_D.parameters()) / 1e6
         )
     )
 
@@ -74,16 +76,12 @@ def main(args):
         shuffle=True # Shuffling to see different events in saved validation image
     )
 
-    optimizer = optim.SGD(net.parameters(), lr=conf.initial_lr, momentum=0.9, weight_decay=1e-4)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 0.95)
-    print("LR {}".format(scheduler.get_lr()))
+    print("LR G {}".format(model.scheduler_G.get_lr()))
+    print("LR D {}".format(model.scheduler_D.get_lr()))
 
-    loss_cls = init_loss_func(conf)
-    loss_scalefactors = loss_cls.get_names_scalefactors()
+    loss_scalefactors = model.get_loss_names_weights()
     # Using methods in this for accuracy metrics in validation
     gapwise_cls = GapWise(conf, override_opts={ "loss_func" : "GapWise_L1Loss" })
-
-    net.train()
 
     t0 = time.time()
     losses_acc = defaultdict(list)
@@ -95,31 +93,14 @@ def main(args):
         write_log_str(conf.checkpoint_dir, "==== Epoch {} ====".format(epoch))
 
         # Training loop
+        model.train()
         for n_iter_epoch, data in enumerate(dataloader_train):
-            optimizer.zero_grad()
+            model.set_input(data)
+            model.optimize_parameters()
 
-            try:
-                s_in = ME.SparseTensor(
-                    coordinates=data["input_coords"], features=data["input_feats"], device=device
-                )
-                s_target = ME.SparseTensor(
-                    coordinates=data["target_coords"], features=data["target_feats"], device=device
-                )
-            except Exception as e:
-                print("Failed to load in GPU sparse tensors - ", end="")
-                print(e)
-                continue
-
-            s_pred = net(s_in)
-
-            loss_tot, losses = loss_cls.calc_loss(s_pred, s_in, s_target, data)
-
-            loss_tot.backward()
-            losses_acc["tot"].append(loss_tot.item())
+            losses = model.get_current_losses()
             for loss_name, loss in losses.items():
-                losses_acc[loss_name].append(loss.item())
-
-            optimizer.step()
+                losses_acc[loss_name].append(loss)
 
             if (
                 args.print_iter and
@@ -129,7 +110,7 @@ def main(args):
                 t_iter = time.time() - t0
                 t0 = time.time()
                 loss_str = get_print_str(
-                    epoch, losses_acc, loss_scalefactors, n_iter_epoch, n_iter, t_iter, s_pred
+                    epoch, losses_acc, loss_scalefactors, n_iter_epoch, n_iter, t_iter
                 )
                 write_log_str(conf.checkpoint_dir, loss_str)
                 losses_acc = defaultdict(list)
@@ -138,8 +119,9 @@ def main(args):
                 not isinstance(args.plot_iter, str) and
                 (n_iter + 1) % args.plot_iter == 0
             ):
+                vis = model.get_current_visuals()
                 plot_pred(
-                    s_pred, s_in, s_target,
+                    vis["s_pred"], vis["s_in"], vis["s_target"],
                     data,
                     conf.vmap,
                     conf.scalefactors,
@@ -153,25 +135,28 @@ def main(args):
                 not isinstance(conf.lr_decay_iter, str) and
                 (n_iter + 1) % conf.lr_decay_iter == 0
             ):
-                scheduler.step()
-                write_log_str(conf.checkpoint_dir, "LR {}".format(scheduler.get_lr()))
+                model.scheduler_step()
+                write_log_str(conf.checkpoint_dir, "LR G {}".format(scheduler_G.get_lr()))
+                write_log_str(conf.checkpoint_dir, "LR D {}".format(scheduler_D.get_lr()))
 
             n_iter += 1
 
         if isinstance(conf.lr_decay_iter, str) and conf.lr_decay_iter == "epoch":
-            scheduler.step()
-            write_log_str(conf.checkpoint_dir, "LR {}".format(scheduler.get_lr()))
+            model.scheduler_step()
+            write_log_str(conf.checkpoint_dir, "LR G {}".format(scheduler_G.get_lr()))
+            write_log_str(conf.checkpoint_dir, "LR D {}".format(scheduler_D.get_lr()))
         if isinstance(args.print_iter, str) and args.print_iter == "epoch":
             t_iter = time.time() - t0
             t0 = time.time()
             loss_str = get_print_str(
-                epoch, losses_acc, loss_scalefactors, n_iter_epoch, n_iter, t_iter, s_pred
+                epoch, losses_acc, loss_scalefactors, n_iter_epoch, n_iter, t_iter
             )
             write_log_str(conf.checkpoint_dir, loss_str)
             losses_acc = defaultdict(list)
         if isinstance(args.plot_iter, str) and args.plot_iter == "epoch":
+            vis = model.get_current_visuals()
             plot_pred(
-                s_pred, s_in, s_target,
+                vis["s_pred"], vis["s_in"], vis["s_target"],
                 data,
                 conf.vmap,
                 conf.scalefactors,
@@ -182,37 +167,26 @@ def main(args):
             )
 
         # Save latest network
-        print("Saving net...")
-        torch.save(net.cpu().state_dict(), os.path.join(conf.checkpoint_dir, "latest_net.pth"))
-        net.to(device)
+        # print("Saving net...")
+        # model.save_networks("latest")
 
         # Validation loop
+        model.eval()
         write_log_str(conf.checkpoint_dir, "== Validation Loop ==")
         losses_acc_valid = defaultdict(list)
         losses_acc_valid_unscaled = defaultdict(list)
         x_gap_abs_diffs, x_gap_frac_diffs = [], []
         z_gap_abs_diffs, z_gap_frac_diffs = [], []
         for data in tqdm(dataloader_valid, desc="Val Loop"):
-            try:
-                s_in = ME.SparseTensor(
-                    coordinates=data["input_coords"], features=data["input_feats"], device=device
-                )
-                s_target = ME.SparseTensor(
-                    coordinates=data["target_coords"], features=data["target_feats"], device=device
-                )
-            except Exception as e:
-                print("Failed to load in GPU sparse tensors - ", end="")
-                print(e)
-                continue
+            model.set_input(data)
+            model.test(compute_losses=True)
 
-            with torch.no_grad():
-                s_pred = net(s_in)
-
-            loss_tot, losses = loss_cls.calc_loss(s_pred, s_in, s_target, data)
-
-            losses_acc_valid["tot"].append(loss_tot.item())
+            losses = model.get_current_losses(valid=True)
             for loss_name, loss in losses.items():
-                losses_acc_valid[loss_name].append(loss.item())
+                losses_acc_valid[loss_name].append(loss)
+
+            ret = model.get_current_visuals()
+            s_pred, s_target, s_in = ret["s_pred"], ret["s_target"], ret["s_in"]
 
             # Get loss metrics without scalefactors applied
             s_pred_unscaled = ME.SparseTensor(
@@ -232,11 +206,10 @@ def main(args):
             s_target_unscaled = ME.SparseTensor(
                 coordinates=s_target.C, features=s_target.F * (1 / conf.scalefactors[0])
             )
-            loss_tot_unscaled, losses_unscaled = loss_cls.calc_loss(
+            loss_tot_unscaled, losses_unscaled = model.lossfunc_G.calc_loss(
                 s_pred_unscaled, s_in_unscaled, s_target_unscaled, data
             )
-
-            losses_acc_valid_unscaled["tot"].append(loss_tot_unscaled.item())
+            losses_acc_valid_unscaled["pixel_tot"].append(loss_tot_unscaled.item())
             for loss_name, loss in losses_unscaled.items():
                 losses_acc_valid_unscaled[loss_name].append(loss.item())
 
@@ -298,6 +271,9 @@ def main(args):
                     z_gap_abs_diffs.append(pred_sum - target_sum)
                     z_gap_frac_diffs.append((pred_sum - target_sum) / max(target_sum, 1.0))
 
+        losses_acc_valid_unscaled["tot"] = losses_acc_valid["tot"]
+        losses_acc_valid_unscaled["G_GAN"] = losses_acc_valid["G_GAN"]
+
         loss_str = (
             "Validation with {} images:\n".format(len(dataset_valid)) +
 			get_loss_str(losses_acc_valid, loss_scalefactors) +
@@ -306,8 +282,9 @@ def main(args):
         )
         write_log_str(conf.checkpoint_dir, loss_str)
         # Plot last prediction of validation loop
+        vis = model.get_current_visuals()
         plot_pred(
-            s_pred, s_in, s_target,
+            vis["s_pred"], vis["s_in"], vis["s_target"],
             data,
             conf.vmap,
             conf.scalefactors,
@@ -350,10 +327,10 @@ def write_log_str(checkpoint_dir, log_str, print_str=True):
         f.write(log_str + '\n')
 
 
-def get_print_str(epoch, losses_acc, loss_scalefactors, n_iter, n_iter_tot, t_iter, s_pred):
+def get_print_str(epoch, losses_acc, loss_scalefactors, n_iter, n_iter_tot, t_iter):
     return (
         "Epoch: {}, Iter: {}, Total Iter: {}, ".format(epoch, n_iter + 1, n_iter_tot + 1) +
-        "Time: {:.7f}, last s_pred.shape: {}\n\t".format(t_iter, s_pred.shape) +
+        "Time: {:.7f}\n\t".format(t_iter) +
 		get_loss_str(losses_acc, loss_scalefactors)
     )
 

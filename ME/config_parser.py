@@ -21,7 +21,8 @@ defaults = {
     "adc_threshold" : 1,
     "xyz_smear_infill" : ((-1, 2), (-1, 2), (-3, 4)),
     "xyz_smear_active" : ((0, 1), (0, 1), (0, 1)),
-    "model_params" : {}
+    "model_params" : {},
+    "train_script" : "train_sigmask"
 }
 
 mandatory_fields = {
