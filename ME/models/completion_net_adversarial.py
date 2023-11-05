@@ -25,6 +25,8 @@ class CompletionNetAdversarial(nn.Module):
 
         if conf.optimizer_G == "SGD":
             self.optimizer_G = optim.SGD(self.net_G.parameters(), **conf.optimizer_G_params)
+        elif conf.optimizer_G == "Adam":
+            self.optimizer_G = optim.Adam(self.net_G.parameters(), **conf.optimizer_G_params)
         else:
             raise ValueError("{} not valid optimzer_G selection".format(conf.optimizer_G))
         if conf.optimizer_D == "SGD":
