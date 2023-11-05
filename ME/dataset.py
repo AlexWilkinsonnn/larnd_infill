@@ -54,6 +54,7 @@ class LarndDataset(torch.utils.data.Dataset):
         else:
             self.x_true_gap_padding = 2 * self.x_gap_size
         self.z_true_gap_padding = 2 * self.z_gap_size
+        self.use_true_gaps = False
 
         self.x_smear_infill, self.y_smear_infill, self.z_smear_infill = xyz_smear_infill
         self.x_smear_active, self.y_smear_active, self.z_smear_active = xyz_smear_active
@@ -163,6 +164,9 @@ class LarndDataset(torch.utils.data.Dataset):
         self.data[index].update(ret)
 
     """ End __init__ helpers """
+
+    def set_use_true_gaps(self, use_true_gaps):
+        self.use_true_gaps = use_true_gaps
 
     def __len__(self):
         return len(self.data)
@@ -369,8 +373,8 @@ class LarndDataset(torch.utils.data.Dataset):
         }
 
     def _generate_random_mask(self):
-        # if self.valid:
-        #     return self.x_true_gaps, self.z_true_gaps
+        if self.use_true_gaps:
+            return self.x_true_gaps, self.z_true_gaps
 
         x_gaps = (
             self.x_true_gaps +

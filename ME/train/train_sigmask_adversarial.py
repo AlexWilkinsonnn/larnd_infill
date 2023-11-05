@@ -281,6 +281,7 @@ def main(args):
 			get_loss_str(losses_acc_valid_unscaled, loss_scalefactors)
         )
         write_log_str(conf.checkpoint_dir, loss_str)
+
         # Plot last prediction of validation loop
         vis = model.get_current_visuals()
         plot_pred(
@@ -294,6 +295,27 @@ def main(args):
             save_tensors=True
         )
 
+        # plot prediction using the true gap positions
+        dataloader_valid.dataset.set_use_true_gaps(True)
+        data = next(iter(dataloader_valid))
+        model.set_input(data)
+        model.test(compute_losses=False)
+        vis = model.get_current_visuals()
+        plot_pred(
+            vis["s_pred"], vis["s_in"], vis["s_target"],
+            data,
+            conf.vmap,
+            conf.scalefactors,
+            "epoch{}-valid-truegaps".format(epoch),
+            conf.detector,
+            save_dir=os.path.join(conf.checkpoint_dir, "preds"),
+            save_tensors=True,
+            max_evs=1,
+            skip_target=True
+        )
+        dataloader_valid.dataset.set_use_true_gaps(False)
+
+        # save summed adc different histograms
         pdf_val_plots = PdfPages(
             os.path.join(
                 conf.checkpoint_dir, "preds", "epoch{}-valid_summary_plots.pdf".format(epoch)
@@ -351,7 +373,7 @@ def get_loss_str(losses_acc, loss_scalefactors):
 
 def plot_pred(
     s_pred, s_in, s_target, data, vmap, scalefactors, save_name_prefix, detector,
-    max_evs=2, save_dir="test/", save_tensors=False
+    max_evs=2, save_dir="test/", save_tensors=False, skip_target=False
 ):
     for i_batch, (
         coords_pred, feats_pred, coords_target, feats_target, coords_in, feats_in
@@ -431,18 +453,19 @@ def plot_pred(
             signal_mask_gap_coords=coords_sigmask_gap_packed,
             signal_mask_active_coords=coords_sigmask_active_packed
         )
-        plot_ndlar_voxels_2(
-            coords_target_packed, feats_list_target,
-            detector,
-            vmap["x"], vmap["y"], vmap["z"],
-            batch_mask_x, batch_mask_z,
-            saveas=os.path.join(
-                save_dir, "{}_batch{}_target.pdf".format(save_name_prefix, i_batch)
-            ),
-            max_feat=150,
-            signal_mask_gap_coords=coords_sigmask_gap_packed,
-            signal_mask_active_coords=coords_sigmask_active_packed
-        )
+        if not skip_target:
+            plot_ndlar_voxels_2(
+                coords_target_packed, feats_list_target,
+                detector,
+                vmap["x"], vmap["y"], vmap["z"],
+                batch_mask_x, batch_mask_z,
+                saveas=os.path.join(
+                    save_dir, "{}_batch{}_target.pdf".format(save_name_prefix, i_batch)
+                ),
+                max_feat=150,
+                signal_mask_gap_coords=coords_sigmask_gap_packed,
+                signal_mask_active_coords=coords_sigmask_active_packed
+            )
 
         if save_tensors:
             coords_in_packed, feats_in_list = [[], [], []], []
@@ -468,16 +491,19 @@ def plot_pred(
                 os.path.join(save_dir,"{}_batch{}_pred.yml".format(save_name_prefix, i_batch)), "w"
             ) as f:
                 yaml.dump(pred_dict, f)
-
-            target_dict = {
-                tuple(coord.tolist()) : feat.tolist()
-                for coord, feat in zip(coords_target, feats_target)
-            }
-            with open(
-                os.path.join(save_dir,"{}_batch{}_target.yml".format(save_name_prefix, i_batch)),
-                "w"
-            ) as f:
-                yaml.dump(target_dict, f)
+            
+            if not skip_target:
+                target_dict = {
+                    tuple(coord.tolist()) : feat.tolist()
+                    for coord, feat in zip(coords_target, feats_target)
+                }
+                with open(
+                    os.path.join(
+                        save_dir,"{}_batch{}_target.yml".format(save_name_prefix, i_batch)
+                    ),
+                    "w"
+                ) as f:
+                    yaml.dump(target_dict, f)
 
 
 def gen_val_histo(x, bins, range, pdf, title, xlabel):
