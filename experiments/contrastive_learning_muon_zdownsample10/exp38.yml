@@ -1,0 +1,56 @@
+det_props: "/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
+pixel_layout: "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
+
+device: "cuda:0"
+max_num_worders: 4
+
+checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/contrastive_learning_muon_zdownsample10"
+name: "exp38"
+train_script: "train_sigmask_adversarial"
+
+data_path: "/share/rcifdata/awilkins/larnd_infill_data/contrastive_learning_muon_zdownsample10"
+vmap_path: "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"
+data_prep_type: "reflection"
+scalefactors: [ 0.00390625, 1.0 ] # 1/256 (max adc 181), 1/1
+n_feats_in: 2 # adc, num packets stacked
+n_feats_out: 1 # adc
+max_dataset_size: 20000
+max_valid_dataset_size: 2000
+adc_threshold: 1 # prune all predicted adc <= 1 in final layer
+
+model_params:
+  final_layer: "hardtanh"
+  enc_ch: [16, 32, 64, 128, 256, 512, 1024]
+  dec_ch: [16, 32, 64, 128, 256, 512, 1024]
+  nonlinearity: "elu"
+
+fake_label: 0.1
+real_label: 1.0
+
+optimizer_G: "SGD"
+optimizer_G_params:
+  lr: 0.01
+  momentum: 0.9
+  weight_decay: 0.0001
+optimizer_D: "SGD"
+optimizer_D_params:
+  lr: 0.005
+  momentum: 0.9
+  weight_decay: 0.0001
+
+D_training_stopper:
+  window_len: 100
+  stop_loss_threshold: 1.0
+
+batch_size: 8
+loss_func: "PixelWise_L1Loss"
+epochs: 200
+lr_decay_iter: 20000
+loss_infill_zero_weight: 0.0
+loss_infill_nonzero_weight: 0.0
+loss_active_zero_weight: 0
+loss_active_nonzero_weight: 0
+loss_infill_weight: 0
+loss_active_weight: 0.00001 # Just to avoid having to refactor since all zeros would break backprop currently as no losses get computed
+loss_infill_sum_weight: 0.0
+loss_GAN_weight: 1.0 # to make roughly the same magnitude as the total pixel loss
