@@ -674,11 +674,10 @@ if __name__ == "__main__":
     )
     scalefactors = [1 / 300, 1 / 5]
     dataset = LarndDataset(
-        train_data_path, DataPrepType.REFLECTION_NORANDOM, vmap, 2, 1, scalefactors,
-        # ((-1, 2), (-1, 2), (-3, 4)), ((0, 1), (0, 1), (0, 1)),
-        ((0, 1), (0, 1), (0, 1)), ((0, 1), (0, 1), (0, 1)),
-        max_dataset_size=10, seed=2,
-        valid=True
+        train_data_path, DataPrepType.REFLECTION, vmap, 2, 1, scalefactors,
+        ((-1, 2), (-1, 2), (-3, 4)), ((0, 1), (0, 1), (0, 1)),
+        # ((0, 1), (0, 1), (0, 1)), ((0, 1), (0, 1), (0, 1)),
+        max_dataset_size=10, seed=2
     )
 
     b_size = 5
@@ -704,11 +703,12 @@ if __name__ == "__main__":
     # print(len(dataloader))
     # print("Loaded {} images in {:.4f}s".format(b_size * len(dataloader) * num_loops, e - s))
 
-    dataloader_itr = iter(dataloader)
+    dataloader.dataset.set_use_true_gaps(True)
     s = time.time()
     num_iters = 2
-    for i in range(num_iters):
-        batch = next(dataloader_itr)
+    for i_iter, batch in enumerate(dataloader):
+        if i_iter > num_iters:
+            break
     e = time.time()
 
     # print("Loaded {} images in {:.4f}s".format(b_size * num_iters, e - s))
