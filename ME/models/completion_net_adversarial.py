@@ -51,6 +51,8 @@ class CompletionNetAdversarial(nn.Module):
             self.recent_losses_G_GAN = None
         self.stop_D_training = False
 
+        self.D_infill_only = conf.D_infill_only
+
         self.register_buffer("real_label", torch.tensor(conf.real_label, device=self.device))
         self.register_buffer("fake_label", torch.tensor(conf.fake_label, device=self.device))
 
@@ -200,6 +202,11 @@ class CompletionNetAdversarial(nn.Module):
 
     def _prep_D_input(self, s):
         C, F = s.C.detach(), s.F.detach()
+
+        if self.D_infill_only:
+            s_in_infill_mask = self.s_in.F[:, -1] == 1
+            C = self.s_in.C[s_in_infill_mask]
+            F = s.features_at_coordinates(C.type(torch.float))
 
         # THIS IS IMPORTANT: no coordinates for a batch index causes avg pooling to create nan
         active_batches = torch.unique(C[:, 0])
