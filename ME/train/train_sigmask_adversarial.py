@@ -468,13 +468,6 @@ def plot_pred(
             )
 
         if save_tensors:
-            coords_in_packed, feats_in_list = [[], [], []], []
-            for coord, feat in zip(coords_in, feats_in):
-                coords_in_packed[0].append(coord[0].item())
-                coords_in_packed[1].append(coord[1].item())
-                coords_in_packed[2].append(coord[2].item())
-                feats_in_list.append(feat.tolist())
-
             in_dict = {
                 tuple(coord.tolist()) : feat.tolist() for coord, feat in zip(coords_in, feats_in)
             }
