@@ -28,6 +28,16 @@ class CompletionNetAdversarial(nn.Module):
             self.optimizer_G = optim.SGD(self.net_G.parameters(), **conf.optimizer_G_params)
         elif conf.optimizer_G == "Adam":
             self.optimizer_G = optim.Adam(self.net_G.parameters(), **conf.optimizer_G_params)
+        elif conf.optimizer_G == "RMSprop":
+            self.optimizer_G = optim.RMSprop(self.net_G.parameters(), **conf.optimizer_G_params)
+        elif conf.optimizer_G == "AdamW":
+            self.optimizer_G = optim.AdamW(self.net_G.parameters(), **conf.optimizer_G_params)
+        elif conf.optimizer_G == "Adamax":
+            self.optimizer_G = optim.AdamW(self.net_G.parameters(), **conf.optimizer_G_params)
+        elif conf.optimizer_G == "NAdam":
+            self.optimizer_G = optim.NAdam(self.net_G.parameters(), **conf.optimizer_G_params)
+        elif conf.optimizer_G == "RAdam":
+            self.optimizer_G = optim.RAdam(self.net_G.parameters(), **conf.optimizer_G_params)
         else:
             raise ValueError("{} not valid optimzer_G selection".format(conf.optimizer_G))
         if conf.optimizer_D == "SGD":
