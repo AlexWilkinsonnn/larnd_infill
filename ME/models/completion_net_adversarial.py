@@ -15,6 +15,7 @@ class CompletionNetAdversarial(nn.Module):
 
         self.device = torch.device(conf.device)
         self.checkpoint_dir = conf.checkpoint_dir
+        self.adc_scalefactor = conf.scalefactors[0]
 
         self.net_G = CompletionNetSigMask(
             (conf.vmap["n_voxels"]["x"], conf.vmap["n_voxels"]["y"], conf.vmap["n_voxels"]["z"]),
@@ -202,6 +203,9 @@ class CompletionNetAdversarial(nn.Module):
 
     def _prep_D_input(self, s):
         C, F = s.C.detach(), s.F.detach()
+        # Want to make sure D cannot use specific pixel values,
+        # not sure if the architecture can do this but want to be sage
+        F = (F * (1 / self.adc_scalefactor)).type(torch.int).type(torch.float) * self.adc_scalefactor
 
         if self.D_infill_only:
             s_in_infill_mask = self.s_in.F[:, -1] == 1
