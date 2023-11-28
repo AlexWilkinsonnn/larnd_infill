@@ -94,6 +94,7 @@ def main(args):
 
         # Training loop
         model.train()
+        model.new_epoch(epoch)
         for n_iter_epoch, data in enumerate(dataloader_train):
             model.set_input(data)
             model.optimize_parameters()

@@ -48,7 +48,12 @@ class CompletionNetAdversarial(nn.Module):
         self.scheduler_D = optim.lr_scheduler.ExponentialLR(self.optimizer_D, 0.95)
 
         self.lossfunc_G = init_loss_func(conf)
-        self.lossfunc_D = nn.BCEWithLogitsLoss() # vanilla, lsgan uses MSELoss
+        if conf.D_type == "vanilla":
+            self.lossfunc_D = nn.BCEWithLogitsLoss()
+        elif conf.D_type == "lsgan":
+            self.lossfunc_D = nn.MSELoss()
+        else:
+            raise ValueError("{} not valid D_type selection".format(conf.D_type))
         self.lambda_loss_GAN = getattr(conf, "loss_GAN_weight", 0.0)
 
         # pause D training if it is too strong
@@ -60,7 +65,9 @@ class CompletionNetAdversarial(nn.Module):
             self.D_stop_threshold = conf.D_training_stopper["stop_loss_threshold"]
         else:
             self.recent_losses_G_GAN = None
-        self.stop_D_training = False
+        self.D_pause_until_epoch = conf.D_pause_until_epoch
+        self.D_training_activated = False # activated in new_epoch
+        self.stop_D_training = True
 
         self.D_infill_only = conf.D_infill_only
 
@@ -69,7 +76,7 @@ class CompletionNetAdversarial(nn.Module):
 
         self.loss_D_fake = None
         self.loss_D_real = None
-        self.loss_D_real = None
+        self.loss_D = None
         self.loss_G_GAN = None
         self.loss_G_pix_tot = None
         self.loss_G_comps = None
@@ -100,7 +107,7 @@ class CompletionNetAdversarial(nn.Module):
 
     def get_current_losses(self, valid=False):
         losses_ret = self.loss_G_comps
-        if not valid: # dont care how D does on unseen data
+        if not valid and self.loss_D is not None: # dont care how D does on unseen data
             losses_ret["D_fake"] = self.loss_D_fake
             losses_ret["D_real"] = self.loss_D_real
             losses_ret["D_tot"] = self.loss_D
@@ -145,6 +152,11 @@ class CompletionNetAdversarial(nn.Module):
         )
         self.net_G.to(self.device)
         self.net_D.to(self.device)
+
+    def new_epoch(self, epoch):
+        if not self.D_training_activated and epoch >= self.D_pause_until_epoch:
+            self.D_training_activated = True
+            self.stop_D_training = False
 
     def test(self, compute_losses=False):
         with torch.no_grad():
@@ -204,6 +216,9 @@ class CompletionNetAdversarial(nn.Module):
         self._update_D_stopper()
 
     def _update_D_stopper(self):
+        if not self.D_training_activated:
+            return
+
         if self.recent_losses_G_GAN is not None:
             self.recent_losses_G_GAN.appendleft(self.loss_G_GAN.item())
             if np.mean(self.recent_losses_G_GAN) > self.D_stop_threshold:
@@ -214,7 +229,7 @@ class CompletionNetAdversarial(nn.Module):
     def _prep_D_input(self, s):
         C, F = s.C.detach(), s.F.detach()
         # Want to make sure D cannot use specific pixel values,
-        # not sure if the architecture can do this but want to be sage
+        # not sure if the architecture can do this but want to be sure
         F = (F * (1 / self.adc_scalefactor)).type(torch.int).type(torch.float) * self.adc_scalefactor
 
         if self.D_infill_only:
@@ -239,10 +254,13 @@ class CompletionNetAdversarial(nn.Module):
 
         # update D
         if not self.stop_D_training:
+            print("updating D")
             self._set_requires_grad(self.net_D, True)
             self.optimizer_D.zero_grad()
             self._backward_D()
             self.optimizer_D.step()
+        else:
+            print("not updating D")
 
         # update G
         self._set_requires_grad(self.net_D, False)

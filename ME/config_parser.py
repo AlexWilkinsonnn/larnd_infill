@@ -25,6 +25,8 @@ defaults = {
     "optimizer_G_params" : {},
     "optimizer_D_params" : {},
     "D_training_stopper" : {},
+    "D_type" : "vanilla",
+    "D_pause_until_epoch": 0,
     "optimizer_D" : "SGD",
     "optimizer_G" : "SGD",
     "train_script" : "train_sigmask",
