@@ -79,11 +79,12 @@ def main(args):
     ax.set_ylim(0, 1.2 * max(validation_losses_total))
 
     if training_losses_D:
-        ax.plot(training_epochs, training_losses_D.pop("G_GAN"), "-.", label="G_GAN", c=next(colors))
+        losses = training_losses_D.pop("G_GAN")
+        ax.plot(training_epochs[-len(losses):], losses, "-.", label="G_GAN", c=next(colors))
 
         ax2 = ax.twinx()
         for loss_name, losses in training_losses_D.items():
-            ax2.plot(training_epochs, losses, "-.", label=loss_name, c=next(colors))
+            ax2.plot(training_epochs[-len(losses):], losses, "-.", label=loss_name, c=next(colors))
         ax2.set_ylabel("D loss")
         ax2.set_ylim(0, 1.2 * max(max(training_losses_D.values(), key=lambda losses: max(losses))))
 
