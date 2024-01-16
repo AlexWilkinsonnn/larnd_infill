@@ -254,13 +254,14 @@ class CompletionNetAdversarial(nn.Module):
 
         # update D
         if not self.stop_D_training:
-            print("updating D")
+            # print("updating D")
             self._set_requires_grad(self.net_D, True)
             self.optimizer_D.zero_grad()
             self._backward_D()
             self.optimizer_D.step()
         else:
-            print("not updating D")
+            # print("not updating D")
+            pass
 
         # update G
         self._set_requires_grad(self.net_D, False)
