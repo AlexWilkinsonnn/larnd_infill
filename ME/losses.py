@@ -573,10 +573,10 @@ class PlaneWise(CustomLoss):
     def _get_plane_losses(
         self, s_pred, s_target, gaps, infill_coords, coord_idx, skip_adc=False, skip_npixel=False
     ):
-        plane_losses_adc, plane_losses_npixel = [], []
-
         if skip_adc and skip_npixel:
-            return plane_losses_adc, plane_losses_npixel
+            return 0, 0
+
+        plane_losses_adc, plane_losses_npixel = [], []
 
         for gap_coord in gaps:
             plane_coords = infill_coords[infill_coords[:, coord_idx] == gap_coord]
@@ -610,8 +610,12 @@ class PlaneWise(CustomLoss):
                     )
                 )
 
-        plane_loss_adc = sum(plane_losses_adc) / len(plane_losses_adc)
-        plane_loss_npixel = sum(plane_losses_npixel) / len(plane_losses_npixel)
+        plane_loss_adc = (
+            sum(plane_losses_adc) / len(plane_losses_adc) if not skip_adc else 0
+        )
+        plane_loss_npixel = (
+            sum(plane_losses_npixel) / len(plane_losses_npixel) if not skip_npixel else 0
+        )
 
         return plane_loss_adc, plane_loss_npixel
 
