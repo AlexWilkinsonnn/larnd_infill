@@ -77,15 +77,24 @@ def main(args):
             coord_y = np.histogram([p.y + p.anode.tpc_y], bins=y_bin_edges)[0].nonzero()[0][0]
             coord_z = np.histogram([p.z_global(centre=True)], bins=z_bin_edges)[0].nonzero()[0][0]
 
-            coord = (coord_x, coord_y, coord_z)
-
-            if coord not in voxel_data:
-                voxel_data[coord] = {}
-                voxel_data[coord]["tot_adc"] = p.ADC
-                voxel_data[coord]["tot_packets"] = 1
+            if p.io_group in [1, 2]: # means anode faces positive z direction just because it does
+                smear_z = min(args.smear_z, vmap["n_voxels"]["z"] - coord_z)
             else:
-                voxel_data[coord]["tot_adc"] += p.ADC
-                voxel_data[coord]["tot_packets"] += 1
+                smear_z = min(args.smear_z, coord_z + 1)
+
+            if smear_z != args.smear_z:
+                print(smear_z, args.smear_z, coord_z)
+
+            for shift in range(smear_z):
+                coord = (coord_x, coord_y, coord_z + (shift if p.io_group in [1, 2] else -shift))
+
+                if coord not in voxel_data:
+                    voxel_data[coord] = {}
+                    voxel_data[coord]["tot_adc"] = p.ADC / smear_z
+                    voxel_data[coord]["tot_packets"] = 1
+                else:
+                    voxel_data[coord]["tot_adc"] += p.ADC / smear_z
+                    voxel_data[coord]["tot_packets"] += 1
 
         coords = [[], [], [], []]
         feats = []
@@ -137,10 +146,30 @@ def parse_arguments():
 
     parser.add_argument("input_file", type=str)
     parser.add_argument("output_dir", type=str)
-    parser.add_argument("vmap", type=str, help="Location of generated voxelisation map to use")
+    parser.add_argument(
+        "vmap", type=str,
+        help="Location of generated voxelisation map to use"
+    )
 
     parser.add_argument("--plot_only", action="store_true")
     parser.add_argument("--batch_mode", action="store_true")
+    # Supposed to account for self-triggering of pixels requiring current to build up. This should
+    # make the packets in the z direction less sparse.
+    parser.add_argument(
+        "--smear_z", type=int, default=1,
+        help="average z bins over n bins in the earlier time direction"
+    )
+    # Reconstructing the drift coordinate from ND-LAr packets always seems to put the packet a bit
+    # closer than the true depo. Cannot figure out why from the code so just correcting it here.
+    # Might need to change these values if using different larnd-sim/larpixsoft.
+    # parser.add_argument(
+    #     "--forward_facing_anode_zshift", type=float, default=0.0,
+    #     help="z shift to apply to all packets from a positive z facing anode"
+    # )
+    # parser.add_argument(
+    #     "--backward_facing_anode_zshift", type=float, default=0.0,
+    #     help="z shift to apply to all packets from a negative z facing anode"
+    # )
 
     args = parser.parse_args()
 
@@ -152,7 +181,6 @@ if __name__ == "__main__":
 
     if args.batch_mode:
         tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
-
 
     main(args)
 
