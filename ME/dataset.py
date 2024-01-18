@@ -63,7 +63,7 @@ class LarndDataset(torch.utils.data.Dataset):
         # data_dir = os.path.join(dataroot, "valid" if valid else "train")
         data_dir = dataroot
         self.data = []
-        # adcs, stacked_pixels = [], [] # To get scalefactors
+        # adcs, stacked_pixels = [], [] # Uncomment to get scalefactors
         for i, f in tqdm(
             enumerate(os.listdir(data_dir)),
             desc="Reading dataset into memory",
@@ -79,7 +79,7 @@ class LarndDataset(torch.utils.data.Dataset):
 
             coo = sparse.load_npz(data_path)
 
-            # for coord_feat, feat in zip(coo.coords[-1], coo.data): # To get scalefactors
+            # for coord_feat, feat in zip(coo.coords[-1], coo.data): # Uncomment to get scalefactors
             #     if coord_feat == 0:
             #         adcs.append(feat)
             #     elif coord_feat == 1:
@@ -98,7 +98,7 @@ class LarndDataset(torch.utils.data.Dataset):
             if prep_type == DataPrepType.REFLECTION_NORANDOM:
                 self._init_getitem_reflection(-1)
 
-        # # To get scalefactors
+        # # Uncomment to get scalefactors
         # print("adcs: min={} max={} mean={}".format(min(adcs), max(adcs), np.mean(adcs)))
         # print(
         #     "stacked_pixels: min={} max={} mean={}".format(
@@ -725,7 +725,7 @@ if __name__ == "__main__":
 
     s_in = ME.SparseTensor(coordinates=batch["input_coords"], features=batch["input_feats"])
     s_target = ME.SparseTensor(coordinates=batch["target_coords"], features=batch["target_feats"])
-    
+
     # target_coords = s_in.coordinates_at(0).unsqueeze(0)
     # for b in range(b_size - 1):
     #     target_coords = torch.cat([target_coords, s_in.coordinates_at(b).unsqueeze(0)], dim=0)

@@ -88,42 +88,79 @@ class PixelWise(CustomLoss):
         }
 
     def calc_loss(self, s_pred, s_in, s_target, data):
+        batch_size = len(data["mask_x"])
+
         (
             infill_coords, active_coords,
             infill_coords_zero, infill_coords_nonzero,
             active_coords_zero, active_coords_nonzero
         ) = self._get_infill_active_coords(s_in, s_target)
 
+        losses_infill_zero, losses_infill_nonzero, losses_infill = [], [], []
+        losses_active_zero, losses_active_nonzero, losses_active = [], [], []
+        losses_infill_sum = []
+
+        # Compute loss separately for each image and then average over batch
+        for i_batch in range(batch_size):
+            if self.lambda_loss_infill_zero:
+                coords = infill_coords_zero[infill_coords_zero[:, 0] == i_batch]
+                losses_infill_zero.append(self._get_loss_at_coords(s_pred, s_target, coords))
+
+            if self.lambda_loss_infill_nonzero:
+                coords = infill_coords_nonzero[infill_coords_nonzero[:, 0] == i_batch]
+                losses_infill_nonzero.append(self._get_loss_at_coords(s_pred, s_target, coords))
+
+            if self.lambda_loss_infill or self.lambda_loss_infill_sum:
+                coords = infill_coords[infill_coords[:, 0] == i_batch]
+                if self.lambda_loss_infill:
+                    losses_infill.append(self._get_loss_at_coords(s_pred, s_target, coords))
+                if self.lambda_loss_infill_sum:
+                    losses_infill_sum.append(
+                        self._get_summed_loss_at_coords(s_pred, s_target, coords)
+                    )
+
+            if self.lambda_loss_active_zero:
+                coords = active_coords_zero[active_coords_zero[:, 0] == i_batch]
+                losses_active_zero.append(self._get_loss_at_coords(s_pred, s_target, coords))
+
+            if self.lambda_loss_active_nonzero:
+                coords = active_coords_nonzero[active_coords_nonzero[:, 0] == i_batch]
+                losses_active_nonzero.append(self._get_loss_at_coords(s_pred, s_target, coords))
+
+            if self.lambda_loss_active:
+                coords = active_coords[active_coords[:, 0] == i_batch]
+                losses_active.append(self._get_loss_at_coords(s_pred, s_target, coords))
+
         loss_tot = 0.0
         losses = {}
         if self.lambda_loss_infill_zero:
-            loss_infill_zero = self._get_loss_at_coords(s_pred, s_target, infill_coords_zero)
-            loss_tot += self.lambda_loss_infill_zero * loss_infill_zero
-            losses["infill_zero"] = loss_infill_zero
+            loss = sum(losses_infill_zero) / batch_size
+            loss_tot += self.lambda_loss_infill_zero * loss
+            losses["infill_zero"] = loss
         if self.lambda_loss_infill_nonzero:
-            loss_infill_nonzero = self._get_loss_at_coords(s_pred, s_target, infill_coords_nonzero)
-            loss_tot += self.lambda_loss_infill_nonzero * loss_infill_nonzero
-            losses["infill_nonzero"] = loss_infill_nonzero
-        if self.lambda_loss_active_zero:
-            loss_active_zero = self._get_loss_at_coords(s_pred, s_target, active_coords_zero)
-            loss_tot += self.lambda_loss_active_zero * loss_active_zero
-            losses["active_zero"] = loss_active_zero
-        if self.lambda_loss_active_nonzero:
-            loss_active_nonzero = self._get_loss_at_coords(s_pred, s_target, active_coords_nonzero)
-            loss_tot += self.lambda_loss_active_nonzero * loss_active_nonzero
-            losses["active_nonzero"] = loss_active_nonzero
+            loss = sum(losses_infill_nonzero) / batch_size
+            loss_tot += self.lambda_loss_infill_nonzero * loss
+            losses["infill_nonzero"] = loss
         if self.lambda_loss_infill:
-            loss_infill = self._get_loss_at_coords(s_pred, s_target, infill_coords)
-            loss_tot += self.lambda_loss_infill * loss_infill
-            losses["infill"] = loss_infill
-        if self.lambda_loss_active:
-            loss_active = self._get_loss_at_coords(s_pred, s_target, active_coords)
-            loss_tot += self.lambda_loss_active * loss_active
-            losses["active"] = loss_active
+            loss = sum(losses_infill) / batch_size
+            loss_tot += self.lambda_loss_infill * loss
+            losses["infill"] = loss
         if self.lambda_loss_infill_sum:
-            loss_infill_sum = self._get_summed_loss_at_coords(s_pred, s_target, infill_coords)
-            loss_tot += self.lambda_loss_infill_sum * loss_infill_sum
-            losses["infill_sum"] = loss_infill_sum
+            loss = sum(losses_infill_sum) / batch_size
+            loss_tot += self.lambda_loss_infill_sum * loss
+            losses["infill_sum"] = loss
+        if self.lambda_loss_active_zero:
+            loss = sum(losses_active_zero) / batch_size
+            loss_tot += self.lambda_loss_active_zero * loss
+            losses["active_zero"] = loss
+        if self.lambda_loss_active_nonzero:
+            loss = sum(losses_active_nonzero) / batch_size
+            loss_tot += self.lambda_loss_active_nonzero * loss
+            losses["active_nonzero"] = loss
+        if self.lambda_loss_active:
+            loss = sum(losses_active) / batch_size
+            loss_tot += self.lambda_loss_active * loss
+            losses["active"] = loss
 
         return loss_tot, losses
 
@@ -165,12 +202,12 @@ class PixelWise(CustomLoss):
             loss = self.crit(
                 s_pred.features_at_coordinates(coords).squeeze().sum(),
                 s_target.features_at_coordinates(coords).squeeze().sum()
-            ) / len(coords)
+            )
         else:
             loss = self.crit_sumreduction(
                 s_pred.features_at_coordinates(coords).squeeze().sum(),
                 s_target.features_at_coordinates(coords).squeeze().sum()
-            ) / len(coords)
+            )
 
         return loss
 
