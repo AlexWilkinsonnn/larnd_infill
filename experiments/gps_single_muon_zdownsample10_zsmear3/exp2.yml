@@ -14,8 +14,8 @@ data_prep_type: "reflection"
 scalefactors: [ 0.015873015873015872, 0.5 ] # 1/63.25 (8-bit no longer makes sense as adcs get averaged over bins), 1/2
 n_feats_in: 2 # adc, num packets stacked
 n_feats_out: 1 # adc
-max_dataset_size: 2000
-max_valid_dataset_size: 200
+max_dataset_size: 20000
+max_valid_dataset_size: 2000
 adc_threshold: 1 # prune all predicted adc <= 1 in final layer
 
 model_params:
