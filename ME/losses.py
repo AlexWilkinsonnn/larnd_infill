@@ -205,126 +205,111 @@ class GapWise(CustomLoss):
         self.lambda_loss_infill_zero = getattr(conf, "loss_infill_zero_weight", 0.0)
         self.lambda_loss_infill_nonzero = getattr(conf, "loss_infill_nonzero_weight", 0.0)
         self.lambda_loss_infill = getattr(conf, "loss_infill_weight", 0.0)
-        self.lambda_loss_x_gap_planes_adc = getattr(conf, "loss_x_gap_planes_adc_weight", 0.0)
-        self.lambda_loss_x_gap_planes_npixel = getattr(conf, "loss_x_gap_planes_npixel_weight", 0.0)
-        self.lambda_loss_z_gap_planes_adc = getattr(conf, "loss_z_gap_planes_adc_weight", 0.0)
-        self.lambda_loss_z_gap_planes_npixel = getattr(conf, "loss_z_gap_planes_npixel_weight", 0.0)
+        self.lambda_loss_x_gaps_adc = getattr(conf, "loss_x_gaps_adc_weight", 0.0)
+        self.lambda_loss_x_gaps_npixel = getattr(conf, "loss_x_gaps_npixel_weight", 0.0)
+        self.lambda_loss_z_gaps_adc = getattr(conf, "loss_z_gaps_adc_weight", 0.0)
+        self.lambda_loss_z_gaps_npixel = getattr(conf, "loss_z_gaps_npixel_weight", 0.0)
 
     def get_names_scalefactors(self):
         return {
             "infill_zero" : self.lambda_loss_infill_zero,
             "infill_nonzero" : self.lambda_loss_infill_nonzero,
             "infill" : self.lambda_loss_infill,
-            "x_gap_planes_adc" : self.lambda_loss_x_gap_planes_adc,
-            "x_gap_planes_npixel" : self.lambda_loss_x_gap_planes_npixel,
-            "z_gap_planes_adc" : self.lambda_loss_z_gap_planes_adc,
-            "z_gap_planes_npixel" : self.lambda_loss_z_gap_planes_npixel
+            "x_gaps_adc" : self.lambda_loss_x_gaps_adc,
+            "x_gaps_npixel" : self.lambda_loss_x_gaps_npixel,
+            "z_gaps_adc" : self.lambda_loss_z_gaps_adc,
+            "z_gaps_npixel" : self.lambda_loss_z_gaps_npixel
         }
 
     def calc_loss(self, s_pred, s_in, s_target, data):
+        batch_size = len(data["mask_x"])
+
         infill_coords, infill_coords_zero, infill_coords_nonzero = self._get_infill_coords(
             s_in, s_target
         )
 
-        loss_tot = 0.0
-        losses = {}
+        losses_infill_zero, losses_infill_nonzero, losses_infill = [], [] ,[]
+        losses_x_gap_adc, losses_x_gap_npixel = [], []
+        losses_z_gap_adc, losses_z_gap_npixel = [], []
 
-        if self.lambda_loss_infill_zero:
-            loss_infill_zero = self._get_loss_at_coords(s_pred, s_target, infill_coords_zero)
-            loss_tot += self.lambda_loss_infill_zero * loss_infill_zero
-            losses["infill_zero"] = loss_infill_zero
-        if self.lambda_loss_infill_nonzero:
-            loss_infill_nonzero = self._get_loss_at_coords(s_pred, s_target, infill_coords_nonzero)
-            loss_tot += self.lambda_loss_infill_nonzero * loss_infill_nonzero
-            losses["infill_nonzero"] = loss_infill_nonzero
-        if self.lambda_loss_infill:
-            loss_infill = self._get_loss_at_coords(s_pred, s_target, infill_coords)
-            loss_tot += self.lambda_loss_infill * loss_infill
-            losses["infill"] = loss_infill
+        # compute selected losses for each image in batch
+        for i_batch in range(batch_size):
+            if self.lambda_loss_infill_zero:
+                batch_infill_coords_zero = (
+                    infill_coords_zero[infill_coords_zero[:, 0] == i_batch]
+                )
+                losses_infill_zero.append(
+                    self._get_loss_at_coords(s_pred, s_target, batch_infill_coords_zero)
+                )
 
-        x_gap_losses_adc, x_gap_losses_npixel = [], []
-        z_gap_losses_adc, z_gap_losses_npixel = [], []
-        for i_batch in range(len(data["mask_x"])):
+            if self.lambda_loss_infill_nonzero:
+                batch_infill_coords_nonzero = (
+                    infill_coords_nonzero[infill_coords_nonzero[:, 0] == i_batch]
+                )
+                losses_infill_nonzero.append(
+                    self._get_loss_at_coords(s_pred, s_target, batch_infill_coords_nonzero)
+                )
+
             batch_infill_coords = infill_coords[infill_coords[:, 0] == i_batch]
 
-            x_gap_losses_adc_batch, x_gap_losses_npixel_batch = self._get_gap_losses(
+            if self.lambda_loss_infill:
+                losses_infill.append(
+                    self._get_loss_at_coords(s_pred, s_target, batch_infill_coords)
+                )
+
+            ret = self._get_gap_losses(
                 s_pred, s_target,
                 set(data["mask_x"][i_batch]),
                 batch_infill_coords,
                 1,
-                skip_adc=(not self.lambda_loss_x_gap_planes_adc),
-                skip_npixels=(not self.lambda_loss_x_gap_planes_npixel)
+                skip_adc=(not self.lambda_loss_x_gaps_adc),
+                skip_npixel=(not self.lambda_loss_x_gaps_npixel)
             )
-            x_gap_losses_adc.append(x_gap_losses_adc_batch)
-            x_gap_losses_npixel.append(x_gap_losses_npixel_batch)
+            losses_x_gap_adc.append(ret[0])
+            losses_x_gap_npixel.append(ret[1])
 
-            z_gap_losses_adc_batch, z_gap_losses_npixel_batch = self._get_gap_losses(
+            ret = self._get_gap_losses(
                 s_pred, s_target,
                 set(data["mask_z"][i_batch]),
                 batch_infill_coords,
                 3,
-                skip_adc=(not self.lambda_loss_z_gap_planes_adc),
-                skip_npixels=(not self.lambda_loss_z_gap_planes_npixel)
+                skip_adc=(not self.lambda_loss_z_gaps_adc),
+                skip_npixel=(not self.lambda_loss_z_gaps_npixel)
             )
-            z_gap_losses_adc.append(z_gap_losses_adc_batch)
-            z_gap_losses_npixel.append(z_gap_losses_npixel_batch)
+            losses_z_gap_adc.append(ret[0])
+            losses_z_gap_npixel.append(ret[1])
 
-        if self.lambda_loss_x_gap_planes_adc:
-            if any(x_gap_losses_adc):
-                loss_x_gap_planes_adc = sum(
-                    (
-                        torch.mean(torch.cat(x_gap_losses_adc_batch, 0)) /
-                        len(x_gap_losses_adc_batch)
-                    )
-                    for x_gap_losses_adc_batch in x_gap_losses_adc
-                        if x_gap_losses_adc_batch
-                ) / len(x_gap_losses_adc)
-            else:
-                loss_x_gap_planes_adc = torch.tensor(0.0)
-            loss_tot += self.lambda_loss_x_gap_planes_adc * loss_x_gap_planes_adc
-            losses["x_gap_planes_adc"] = loss_x_gap_planes_adc
-        if self.lambda_loss_x_gap_planes_npixel:
-            if any(x_gap_losses_npixel):
-                loss_x_gap_planes_npixel = sum(
-                    (
-                        torch.mean(torch.cat(x_gap_losses_npixel_batch, 0)) /
-                        len(x_gap_losses_npixel_batch)
-                    )
-                    for x_gap_losses_npixel_batch in x_gap_losses_npixel
-                        if x_gap_losses_npixel_batch
-                )
-            else:
-                loss_x_gap_planes_npixel = torch.tensor(0.0)
-            loss_tot += self.lambda_loss_x_gap_planes_npixel * loss_x_gap_planes_npixel
-            losses["x_gap_planes_npixel"] = loss_x_gap_planes_npixel
-        if self.lambda_loss_z_gap_planes_adc:
-            if any(z_gap_losses_adc):
-                loss_z_gap_planes_adc = sum(
-                    (
-                        torch.mean(torch.cat(z_gap_losses_adc_batch, 0)) /
-                        len(z_gap_losses_adc_batch)
-                    )
-                    for z_gap_losses_adc_batch in z_gap_losses_adc
-                        if z_gap_losses_adc_batch
-                )
-            else:
-                loss_z_gap_planes_adc = torch.tensor(0.0)
-            loss_tot += self.lambda_loss_z_gap_planes_adc * loss_z_gap_planes_adc
-            losses["z_gap_planes_adc"] = loss_z_gap_planes_adc
-        if self.lambda_loss_z_gap_planes_npixel:
-            if any(z_gap_losses_npixel):
-                loss_z_gap_planes_npixel = sum(
-                    (
-                        torch.mean(torch.cat(z_gap_losses_npixel_batch, 0)) /
-                        len(z_gap_losses_npixel_batch)
-                    )
-                    for z_gap_losses_npixel_batch in z_gap_losses_npixel
-                        if z_gap_losses_npixel_batch
-                )
-            else:
-                loss_z_gap_planes_npixel = torch.tensor(0.0)
-            loss_tot += self.lambda_loss_z_gap_planes_npixel * loss_z_gap_planes_npixel
-            losses["z_gap_planes_npixel"] = loss_z_gap_planes_npixel
+        # average each loss over batch and calculate total loss
+        loss_tot = 0.0
+        losses = {}
+        if self.lambda_loss_infill_zero:
+            loss = sum(losses_infill_zero) / batch_size
+            loss_tot += self.lambda_loss_infill_zero * loss
+            losses["infill_zero"] = loss
+        if self.lambda_loss_infill_nonzero:
+            loss = sum(losses_infill_nonzero) / batch_size
+            loss_tot += self.lambda_loss_infill_nonzero * loss
+            losses["infill_nonzero"] = loss
+        if self.lambda_loss_infill:
+            loss = sum(losses_infill) / batch_size
+            loss_tot += self.lambda_loss_infill * loss
+            losses["infill"] = loss
+        if self.lambda_loss_x_gaps_adc:
+            loss = sum(losses_x_gap_adc) / batch_size
+            loss_tot += self.lambda_loss_x_gaps_adc * loss
+            losses["x_gaps_adc"] = loss
+        if self.lambda_loss_x_gaps_npixel:
+            loss = sum(losses_x_gap_npixel) / batch_size
+            loss_tot += self.lambda_loss_x_gaps_npixel * loss
+            losses["x_gaps_npixel"] = loss
+        if self.lambda_loss_z_gaps_adc:
+            loss = sum(losses_z_gap_adc) / batch_size
+            loss_tot += self.lambda_loss_z_gaps_adc * loss
+            losses["z_gaps_adc"] = loss
+        if self.lambda_loss_z_gaps_npixel:
+            loss = sum(losses_z_gap_npixel) / batch_size
+            loss_tot += self.lambda_loss_z_gaps_npixel * loss
+            losses["z_gaps_npixel"] = loss
 
         return loss_tot, losses
 
@@ -353,19 +338,17 @@ class GapWise(CustomLoss):
         return loss
 
     def _get_gap_losses(
-        self, s_pred, s_target, gaps, infill_coords, coord_idx, skip_adc=False, skip_npixels=False
+        self, s_pred, s_target, gaps, infill_coords, coord_idx, skip_adc=False, skip_npixel=False
     ):
-        gap_losses_adc, gap_losses_npixel = [], []
+        if skip_adc and skip_npixel:
+            return 0, 0
 
-        if skip_adc and skip_npixels:
-            return gap_losses_adc, gap_losses_npixel
+        gap_losses_adc, gap_losses_npixel = [], []
 
         gap_ranges = self._get_edge_ranges(
             [
                 int(gap_coord)
-                for gap_coord in torch.unique(
-                    infill_coords[:, coord_idx]
-                ).tolist()
+                for gap_coord in torch.unique(infill_coords[:, coord_idx]).tolist()
                     if int(gap_coord) in gaps
             ]
         )
@@ -381,11 +364,10 @@ class GapWise(CustomLoss):
                     self.crit_adc(
                         s_pred.features_at_coordinates(gap_coords).squeeze().sum(),
                         s_target.features_at_coordinates(gap_coords).squeeze().sum()
-                    ).view(1) / # 0d -> 1d for cat operation later
-                    len(gap_coords)
+                    )
                 )
 
-            if not skip_npixels:
+            if not skip_npixel:
                 gap_losses_npixel.append(
                     self.crit_npixel(
                         (
@@ -393,7 +375,6 @@ class GapWise(CustomLoss):
                                 s_pred.features_at_coordinates(gap_coords).squeeze(),
                                 min=0.0, max=self.adc_threshold
                             ).sum(dtype=s_pred.F.dtype) /
-                            len(gap_coords) /
                             self.adc_threshold
                         ),
                         (
@@ -401,13 +382,15 @@ class GapWise(CustomLoss):
                                 s_target.features_at_coordinates(gap_coords).squeeze(),
                                 min=0.0, max=self.adc_threshold
                             ).sum(dtype=s_target.F.dtype) /
-                            len(gap_coords) /
                             self.adc_threshold
                         )
-                    ).view(1)
+                    )
                 )
 
-        return gap_losses_adc, gap_losses_npixel
+        gap_loss_adc =  sum(gap_losses_adc) / len(gap_losses_adc) if not skip_adc else 0
+        gap_loss_npixel = sum(gap_losses_npixel) / len(gap_losses_npixel) if not skip_npixel else 0
+
+        return gap_loss_adc, gap_loss_npixel
 
     @staticmethod
     def _get_edge_ranges(nums):
@@ -465,7 +448,7 @@ class PlaneWise(CustomLoss):
         losses_x_plane_adc, losses_x_plane_npixel = [], []
         losses_z_plane_adc, losses_z_plane_npixel = [], []
 
-        # Compute selected losses for each image in batch
+        # compute selected losses for each image in batch
         for i_batch in range(batch_size):
             if self.lambda_loss_infill_zero:
                 batch_infill_coords_zero = (
@@ -512,7 +495,7 @@ class PlaneWise(CustomLoss):
             losses_z_plane_adc.append(ret[0])
             losses_z_plane_npixel.append(ret[1])
 
-        # Average each loss over batch and calculate total loss
+        # average each loss over batch and calculate total loss
         loss_tot = 0.0
         losses = {}
         if self.lambda_loss_infill_zero:
