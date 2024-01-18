@@ -345,13 +345,21 @@ class GapWise(CustomLoss):
 
         gap_losses_adc, gap_losses_npixel = [], []
 
-        gap_ranges = self._get_edge_ranges(
-            [
-                int(gap_coord)
-                for gap_coord in torch.unique(infill_coords[:, coord_idx]).tolist()
-                    if int(gap_coord) in gaps
-            ]
-        )
+        # Only considering gap coords (x or z) that contain active coords in the plane
+        active_gap_coords = [
+            int(gap_coord)
+            for gap_coord in torch.unique(infill_coords[:, coord_idx]).tolist()
+                if int(gap_coord) in gaps
+        ]
+        # No active coords in any gaps,
+        # use a token gap coord so we still have something to backprop in the end
+        if not active_gap_coords:
+            active_gap_coords = [next(iter(gaps))]
+            bad = True
+        else:
+            bad = False
+        gap_ranges = self._get_edge_ranges(active_gap_coords)
+
         for gap_start, gap_end in gap_ranges:
             gap_mask = sum(
                 infill_coords[:, coord_idx] == gap_coord
