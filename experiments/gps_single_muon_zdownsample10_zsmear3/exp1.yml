@@ -42,15 +42,17 @@ optimizer_D_params:
   momentum: 0.9
   weight_decay: 0.0001
 
-batch_size: 6
+batch_size: 2
 loss_func: "PixelWise_L1Loss"
 epochs: 600
-lr_decay_iter: 5000
-loss_infill_zero_weight: 0.0
-loss_infill_nonzero_weight: 0.0
+lr_decay_iter: 20000
+loss_infill_zero_weight: 1.0
+loss_infill_nonzero_weight: 0.1
 loss_active_zero_weight: 0.0
 loss_active_nonzero_weight: 0.0
-loss_infill_weight: 100.0
-loss_active_weight: 1.0
-loss_infill_sum_weight: 0.01
+loss_infill_weight: 0.0
+loss_active_weight: 0.01
+loss_infill_sum_weight: 0.0
 loss_GAN_weight: 0.00
+
+xyz_smear_infill: !!python/tuple [!!python/tuple [-1, 2], !!python/tuple [-1, 2], !!python/tuple [-2, 3]]
