@@ -176,7 +176,17 @@ class CompletionNetAdversarial(nn.Module):
             self.forward()
             if compute_losses:
                 # compute gan loss
-                pred_fake = self.net_D(self.s_pred)
+                s_in_infill_mask = self.s_in.F[:, -1] == 1
+                s_in_infill_C = self.s_in.C[s_in_infill_mask]
+                s_pred_infill_F = self.s_pred.features_at_coordinates(
+                    s_in_infill_C.type(torch.float)
+                )
+                pred_tensor = ME.SparseTensor(
+                    coordinates=s_in_infill_C.detach(),
+                    features=s_pred_infill_F.detach(),
+                    device=self.device
+                )
+                pred_fake = self.net_D(pred_tensor)
                 self.loss_G_GAN = self.lossfunc_D(pred_fake, self.real_label.expand_as(pred_fake))
 
                 # compute standard loss
@@ -276,15 +286,15 @@ class CompletionNetAdversarial(nn.Module):
         self.forward()
 
         # update D
-        # if not self.stop_D_training:
-        #     # print("updating D")
-        #     self._set_requires_grad(self.net_D, True)
-        #     self.optimizer_D.zero_grad()
-        #     self._backward_D()
-        #     self.optimizer_D.step()
-        # else:
-        #     # print("not updating D")
-        #     pass
+        if not self.stop_D_training:
+            # print("updating D")
+            self._set_requires_grad(self.net_D, True)
+            self.optimizer_D.zero_grad()
+            self._backward_D()
+            self.optimizer_D.step()
+        else:
+            # print("not updating D")
+            pass
 
         # update G
         self._set_requires_grad(self.net_D, False)
