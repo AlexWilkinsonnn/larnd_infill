@@ -96,7 +96,10 @@ def main(args):
         model.train()
         model.new_epoch(epoch)
         for n_iter_epoch, data in enumerate(dataloader_train):
-            model.set_input(data)
+            if not model.set_input(data):
+                n_iter += 1
+                continue
+
             model.optimize_parameters()
 
             losses = model.get_current_losses()
@@ -485,7 +488,7 @@ def plot_pred(
                 os.path.join(save_dir,"{}_batch{}_pred.yml".format(save_name_prefix, i_batch)), "w"
             ) as f:
                 yaml.dump(pred_dict, f)
-            
+
             if not skip_target:
                 target_dict = {
                     tuple(coord.tolist()) : feat.tolist()

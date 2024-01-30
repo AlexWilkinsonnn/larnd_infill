@@ -1,4 +1,4 @@
-import os
+import os, functools
 from collections import deque
 
 import numpy as np
@@ -22,7 +22,15 @@ class CompletionNetAdversarial(nn.Module):
             in_nchannel=conf.n_feats_in + 1, out_nchannel=conf.n_feats_out,
             final_pruning_threshold=conf.adc_threshold, **conf.model_params
         ).to(self.device)
-        self.net_D = InfillDiscriminator(1, 1).to(self.device)
+        if conf.net_D == "MEClassifier":
+            self.net_D = InfillDiscriminator(1, 1).to(self.device)
+            raise NotImplementedError(
+                "Need to implement prepping the prediction as a TensorField!"
+            )
+        elif conf.net_D == "PatchGAN":
+            self.net_D = InfillDiscriminatorPatchGAN(1).to(self.device)
+        else:
+            raise NotImplementedError("no net_D '{}' defined".format(conf.net_D))
 
         if conf.optimizer_G == "SGD":
             self.optimizer_G = optim.SGD(self.net_G.parameters(), **conf.optimizer_G_params)
@@ -69,8 +77,6 @@ class CompletionNetAdversarial(nn.Module):
         self.D_training_activated = False # activated in new_epoch
         self.stop_D_training = True
 
-        self.D_infill_only = conf.D_infill_only
-
         self.register_buffer("real_label", torch.tensor(conf.real_label, device=self.device))
         self.register_buffer("fake_label", torch.tensor(conf.fake_label, device=self.device))
 
@@ -88,6 +94,11 @@ class CompletionNetAdversarial(nn.Module):
         self.s_pred = None
 
     def set_input(self, data):
+        # No images in the batch have anything to infill, not worth training on and breaks
+        # loss calculations. Easier to skip at this stage than in the dataloader.
+        if torch.all(data["input_feats"][:, -1] == 0):
+            return False
+
         self.data = data
         self.s_in = ME.SparseTensor(
             coordinates=data["input_coords"], features=data["input_feats"], device=self.device
@@ -95,6 +106,8 @@ class CompletionNetAdversarial(nn.Module):
         self.s_target = ME.SparseTensor(
             coordinates=data["target_coords"], features=data["target_feats"], device=self.device
         )
+
+        return True
 
     def get_loss_names_weights(self):
         ret = self.lossfunc_G.get_names_scalefactors()
@@ -163,8 +176,7 @@ class CompletionNetAdversarial(nn.Module):
             self.forward()
             if compute_losses:
                 # compute gan loss
-                pred_tf = self._prep_D_input(self.s_pred)
-                pred_fake = self.net_D(pred_tf)
+                pred_fake = self.net_D(self.s_pred)
                 self.loss_G_GAN = self.lossfunc_D(pred_fake, self.real_label.expand_as(pred_fake))
 
                 # compute standard loss
@@ -179,28 +191,40 @@ class CompletionNetAdversarial(nn.Module):
         self.s_pred = self.net_G(self.s_in)
 
     def _backward_D(self):
-        pred_tf = self._prep_D_input(self.s_pred)
-        target_tf = self._prep_D_input(self.s_target)
+        s_in_infill_mask = self.s_in.F[:, -1] == 1
+        s_in_infill_C = self.s_in.C[s_in_infill_mask]
+        s_pred_infill_F = self.s_pred.features_at_coordinates(s_in_infill_C.type(torch.float))
+        s_target_infill_F = self.s_target.features_at_coordinates(s_in_infill_C.type(torch.float))
+        pred_tensor = ME.SparseTensor(
+            coordinates=s_in_infill_C.detach(),
+            features=s_pred_infill_F.detach(),
+            device=self.device
+        )
+        target_tensor = ME.SparseTensor(
+            coordinates=s_in_infill_C.detach(),
+            features=s_target_infill_F.detach(),
+            device=self.device
+        )
 
-        pred_fake = self.net_D(pred_tf)
+        pred_fake = self.net_D(pred_tensor)
         self.loss_D_fake = self.lossfunc_D(pred_fake, self.fake_label.expand_as(pred_fake))
 
-        target_real = self.net_D(target_tf)
+        target_real = self.net_D(target_tensor.detach())
         self.loss_D_real = self.lossfunc_D(target_real, self.real_label.expand_as(target_real))
 
         self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
-
-        # if torch.isnan(self.loss_D):
-        #     # print(pred_F)
-        #     print(pred_fake)
-        #     import sys; sys.exit()
 
         self.loss_D.backward()
 
     def _backward_G(self):
         # check what D makes of the output
-        pred_tf = self._prep_D_input(self.s_pred)
-        pred_fake = self.net_D(pred_tf)
+        s_in_infill_mask = self.s_in.F[:, -1] == 1
+        s_in_infill_C = self.s_in.C[s_in_infill_mask]
+        s_pred_infill_F = self.s_pred.features_at_coordinates(s_in_infill_C.type(torch.float))
+        pred_tensor = ME.SparseTensor(
+            coordinates=s_in_infill_C, features=s_pred_infill_F, device=self.device
+        )
+        pred_fake = self.net_D(pred_tensor)
         self.loss_G_GAN = self.lossfunc_D(pred_fake, self.real_label.expand_as(pred_fake))
 
         # compute standard loss
@@ -209,7 +233,7 @@ class CompletionNetAdversarial(nn.Module):
         )
 
         # combine for final loss
-        self.loss_G = (self.lambda_loss_GAN * self.loss_G_GAN + self.loss_G_pix_tot)
+        self.loss_G = self.lambda_loss_GAN * self.loss_G_GAN + self.loss_G_pix_tot
 
         self.loss_G.backward()
 
@@ -227,41 +251,40 @@ class CompletionNetAdversarial(nn.Module):
                 self.stop_D_training = False
 
     def _prep_D_input(self, s):
+        """
+        not being used anymore
+        """
         C, F = s.C.detach(), s.F.detach()
         # Want to make sure D cannot use specific pixel values,
         # not sure if the architecture can do this but want to be sure
         F = (F * (1 / self.adc_scalefactor)).type(torch.int).type(torch.float) * self.adc_scalefactor
 
-        if self.D_infill_only:
-            s_in_infill_mask = self.s_in.F[:, -1] == 1
-            C = self.s_in.C[s_in_infill_mask]
-            F = s.features_at_coordinates(C.type(torch.float))
+        if isinstance(self.net_D, InfillDiscriminator):
+            # THIS IS IMPORTANT: no coordinates for a batch index causes avg pooling to create nan
+            active_batches = torch.unique(C[:, 0])
+            for i_batch in range(len(self.data["mask_x"])):
+                if i_batch not in active_batches:
+                    # print(active_batches)
+                    # print("Adding {} and {}".format(torch.tensor([[i_batch, 0, 0, 0]], device=C.device), torch.tensor([[0.0]], device=C.device)))
+                    C = torch.cat([C, torch.tensor([[i_batch, 0, 0, 0]], device=C.device)])
+                    F = torch.cat([F, torch.tensor([[0.0]], device=C.device)])
 
-        # THIS IS IMPORTANT: no coordinates for a batch index causes avg pooling to create nan
-        active_batches = torch.unique(C[:, 0])
-        for i_batch in range(len(self.data["mask_x"])):
-            if i_batch not in active_batches:
-                # print(active_batches)
-                # print("Adding {} and {}".format(torch.tensor([[i_batch, 0, 0, 0]], device=C.device), torch.tensor([[0.0]], device=C.device)))
-                C = torch.cat([C, torch.tensor([[i_batch, 0, 0, 0]], device=C.device)])
-                F = torch.cat([F, torch.tensor([[0.0]], device=C.device)])
-
-        return ME.TensorField(coordinates=C.detach(), features=F.detach(), device=self.device)
+            return ME.TensorField(coordinates=C.detach(), features=F.detach(), device=self.device)
 
     def optimize_parameters(self):
         # make prediction
         self.forward()
 
         # update D
-        if not self.stop_D_training:
-            # print("updating D")
-            self._set_requires_grad(self.net_D, True)
-            self.optimizer_D.zero_grad()
-            self._backward_D()
-            self.optimizer_D.step()
-        else:
-            # print("not updating D")
-            pass
+        # if not self.stop_D_training:
+        #     # print("updating D")
+        #     self._set_requires_grad(self.net_D, True)
+        #     self.optimizer_D.zero_grad()
+        #     self._backward_D()
+        #     self.optimizer_D.step()
+        # else:
+        #     # print("not updating D")
+        #     pass
 
         # update G
         self._set_requires_grad(self.net_D, False)
@@ -572,6 +595,80 @@ class CompletionNetSigMask(nn.Module):
         out = self._final_pruning_layer(out)
 
         return out
+
+class InfillDiscriminatorPatchGAN(nn.Module):
+    """
+    Aim to reproduce pix2pix style PatchGAN. Sparse images will have different numbers of patches
+    depending on the number of coordinates but the patches will be spatially the same.
+    The PatchGAN expects as input infill coordinates + some amount of unmasked coordinates from
+    either side of the infill (so it knows the condition but isnt just classifying patches that are
+    majority unmasked and so easy for the generator to reproduce)
+    """
+    def __init__(
+        self,
+        in_channel,
+        n_layers=2,
+        nf=64,
+        norm_layer=ME.MinkowskiInstanceNorm,
+        dim=3
+    ):
+        super(InfillDiscriminatorPatchGAN, self).__init__()
+
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        # Downsampling convolutional net
+        seq = [
+            ME.MinkowskiConvolution(in_channel, nf, kernel_size=4, stride=2, dimension=dim),
+            ME.MinkowskiLeakyReLU(0.2, True)
+        ]
+        nf_mult, nf_mult_prev = 1, 1
+        for n in range(1, n_layers):
+            nf_mult_prev = nf_mult
+            nf_mult = min(2**n, 8)
+            seq += [
+                ME.MinkowskiConvolution(
+                    nf * nf_mult_prev, nf * nf_mult,
+                    kernel_size=4, stride=2, bias=use_bias, dimension=dim
+                ),
+                norm_layer(nf * nf_mult),
+                ME.MinkowskiLeakyReLU(0.2, True)
+            ]
+        nf_mult_prev = nf_mult
+        nf_mult = min(2**n_layers, 8)
+        seq += [
+            ME.MinkowskiConvolution(
+                nf * nf_mult_prev, nf * nf_mult,
+                kernel_size=4, stride=1, bias=use_bias, dimension=dim
+            ),
+            norm_layer(nf * nf_mult),
+            ME.MinkowskiLeakyReLU(0.2, True)
+        ]
+
+        # 1 channel prediction for each patch
+        seq += [ME.MinkowskiConvolution(nf * nf_mult, 1, kernel_size=4, stride=1, dimension=dim)]
+
+        self.model = nn.Sequential(*seq)
+
+    def forward(self, x):
+        patch_preds = self.model(x)
+        # Take the minimum of each batch's patch predictions to get real/fake prediction for batch
+        # ie. global min pooling
+        # My thought is D should give high scores to patches that look real and low to ones that
+        # look fake. Most of the image comes from unmasked track so it is trivial for G to make
+        # this look real. Image should be classified as fake based on the fakest looking patch D
+        # sees (this should correspond to the worst infill)
+        # Don't want to use average pool because that will depend on the number of patches of
+        # unmasked track which varies a lot
+        batch_preds = torch.cat(
+            [
+                torch.mean(patch_preds.F[patch_preds.C[:, 0] == i_b]).view(1, 1)
+                for i_b in torch.unique(patch_preds.C[:, 0])
+            ]
+        )
+        return batch_preds
 
 class InfillDiscriminator(nn.Module):
     def __init__(

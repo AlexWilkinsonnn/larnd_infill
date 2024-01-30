@@ -32,7 +32,7 @@ defaults = {
     "train_script" : "train_sigmask",
     "fake_label" : 0.0,
     "real_label" : 1.0,
-    "D_infill_only" : False
+    "net_D" : "PatchGAN"
 }
 
 mandatory_fields = {
