@@ -24,9 +24,6 @@ class CompletionNetAdversarial(nn.Module):
         ).to(self.device)
         if conf.net_D == "MEClassifier":
             self.net_D = InfillDiscriminator(1, 1).to(self.device)
-            raise NotImplementedError(
-                "Need to implement prepping the prediction as a TensorField!"
-            )
         elif conf.net_D == "PatchGAN":
             self.net_D = InfillDiscriminatorPatchGAN(1).to(self.device)
         else:
@@ -246,13 +243,9 @@ class CompletionNetAdversarial(nn.Module):
             #         C = torch.cat([C, torch.tensor([[i_batch, 0, 0, 0]], device=C.device)])
             #         F = torch.cat([F, torch.tensor([[0.0]], device=C.device)])
         if isinstance(self.net_D, InfillDiscriminator):
-            s_in_infill_mask = self.s_in.F[:, -1] == 1
-            s_in_infill_C = self.s_in.C[s_in_infill_mask]
-            s_F = s.features_at_coordinates(s_in_infill_C.type(torch.float))
-
             return ME.TensorField(
-                coordinates=s_in_infill_C,
-                features=s_F.detach() if detach else s_F,
+                coordinates=s.C,
+                features=s.F.detach() if detach else s.F,
                 device=self.device
             )
 
@@ -486,25 +479,6 @@ class CompletionNetSigMask(nn.Module):
             raise e
 
         return out
-
-    def get_target(self, out, target_key, kernel_size=1):
-        with torch.no_grad():
-            target = torch.zeros(len(out), dtype=torch.bool, device=out.device)
-            cm = out.coordinate_manager
-            strided_target_key = cm.stride(target_key, out.tensor_stride[0])
-            kernel_map = cm.kernel_map(
-                out.coordinate_map_key, strided_target_key, kernel_size=kernel_size, region_type=1
-            )
-            for _, curr_in in kernel_map.items():
-                target[curr_in[0].long()] = 1
-
-        return target
-
-    def valid_batch_map(self, batch_map):
-        for b in batch_map:
-            if len(b) == 0:
-                return False
-        return True
 
     def forward(self, input_t):
         enc_s1 = self.enc_block_s1(input_t)
