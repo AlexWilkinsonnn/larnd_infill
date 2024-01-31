@@ -47,11 +47,11 @@ class CompletionNetAdversarial(nn.Module):
         elif conf.optimizer_G == "RAdam":
             self.optimizer_G = optim.RAdam(self.net_G.parameters(), **conf.optimizer_G_params)
         else:
-            raise ValueError("{} not valid optimzer_G selection".format(conf.optimizer_G))
+            raise ValueError("{} not valid optimizer_G selection".format(conf.optimizer_G))
         if conf.optimizer_D == "SGD":
             self.optimizer_D = optim.SGD(self.net_D.parameters(), **conf.optimizer_D_params)
         else:
-            raise ValueError("{} not valid optimzer_D selection".format(conf.optimizer_D))
+            raise ValueError("{} not valid optimizer_D selection".format(conf.optimizer_D))
         self.scheduler_G = optim.lr_scheduler.ExponentialLR(self.optimizer_G, 0.95)
         self.scheduler_D = optim.lr_scheduler.ExponentialLR(self.optimizer_D, 0.95)
 
