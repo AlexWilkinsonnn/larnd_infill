@@ -176,16 +176,7 @@ class CompletionNetAdversarial(nn.Module):
             self.forward()
             if compute_losses:
                 # compute gan loss
-                s_in_infill_mask = self.s_in.F[:, -1] == 1
-                s_in_infill_C = self.s_in.C[s_in_infill_mask]
-                s_pred_infill_F = self.s_pred.features_at_coordinates(
-                    s_in_infill_C.type(torch.float)
-                )
-                pred_tensor = ME.SparseTensor(
-                    coordinates=s_in_infill_C.detach(),
-                    features=s_pred_infill_F.detach(),
-                    device=self.device
-                )
+                pred_tensor = self._prep_D_input(self.s_pred, True)
                 pred_fake = self.net_D(pred_tensor)
                 self.loss_G_GAN = self.lossfunc_D(pred_fake, self.real_label.expand_as(pred_fake))
 
@@ -201,24 +192,11 @@ class CompletionNetAdversarial(nn.Module):
         self.s_pred = self.net_G(self.s_in)
 
     def _backward_D(self):
-        s_in_infill_mask = self.s_in.F[:, -1] == 1
-        s_in_infill_C = self.s_in.C[s_in_infill_mask]
-        s_pred_infill_F = self.s_pred.features_at_coordinates(s_in_infill_C.type(torch.float))
-        s_target_infill_F = self.s_target.features_at_coordinates(s_in_infill_C.type(torch.float))
-        pred_tensor = ME.SparseTensor(
-            coordinates=s_in_infill_C.detach(),
-            features=s_pred_infill_F.detach(),
-            device=self.device
-        )
-        target_tensor = ME.SparseTensor(
-            coordinates=s_in_infill_C.detach(),
-            features=s_target_infill_F.detach(),
-            device=self.device
-        )
-
+        pred_tensor = self._prep_D_input(self.s_pred, True)
         pred_fake = self.net_D(pred_tensor)
         self.loss_D_fake = self.lossfunc_D(pred_fake, self.fake_label.expand_as(pred_fake))
 
+        target_tensor = self._prep_D_input(self.s_target, True)
         target_real = self.net_D(target_tensor.detach())
         self.loss_D_real = self.lossfunc_D(target_real, self.real_label.expand_as(target_real))
 
@@ -228,12 +206,7 @@ class CompletionNetAdversarial(nn.Module):
 
     def _backward_G(self):
         # check what D makes of the output
-        s_in_infill_mask = self.s_in.F[:, -1] == 1
-        s_in_infill_C = self.s_in.C[s_in_infill_mask]
-        s_pred_infill_F = self.s_pred.features_at_coordinates(s_in_infill_C.type(torch.float))
-        pred_tensor = ME.SparseTensor(
-            coordinates=s_in_infill_C, features=s_pred_infill_F, device=self.device
-        )
+        pred_tensor = self._prep_D_input(self.s_pred, False)
         pred_fake = self.net_D(pred_tensor)
         self.loss_G_GAN = self.lossfunc_D(pred_fake, self.real_label.expand_as(pred_fake))
 
@@ -260,26 +233,39 @@ class CompletionNetAdversarial(nn.Module):
             else:
                 self.stop_D_training = False
 
-    def _prep_D_input(self, s):
-        """
-        not being used anymore
-        """
-        C, F = s.C.detach(), s.F.detach()
-        # Want to make sure D cannot use specific pixel values,
-        # not sure if the architecture can do this but want to be sure
-        F = (F * (1 / self.adc_scalefactor)).type(torch.int).type(torch.float) * self.adc_scalefactor
-
+    def _prep_D_input(self, s, detach):
+        # # Want to make sure D cannot use specific pixel values,
+        # # not sure if the architecture can do this but want to be sure
+        # F = (F * (1 / self.adc_scalefactor)).type(torch.int).type(torch.float) * self.adc_scalefactor
+            # # THIS IS IMPORTANT: no coordinates for a batch index causes avg pooling to create nan
+            # active_batches = torch.unique(C[:, 0])
+            # for i_batch in range(len(self.data["mask_x"])):
+            #     if i_batch not in active_batches:
+            #         # print(active_batches)
+            #         # print("Adding {} and {}".format(torch.tensor([[i_batch, 0, 0, 0]], device=C.device), torch.tensor([[0.0]], device=C.device)))
+            #         C = torch.cat([C, torch.tensor([[i_batch, 0, 0, 0]], device=C.device)])
+            #         F = torch.cat([F, torch.tensor([[0.0]], device=C.device)])
         if isinstance(self.net_D, InfillDiscriminator):
-            # THIS IS IMPORTANT: no coordinates for a batch index causes avg pooling to create nan
-            active_batches = torch.unique(C[:, 0])
-            for i_batch in range(len(self.data["mask_x"])):
-                if i_batch not in active_batches:
-                    # print(active_batches)
-                    # print("Adding {} and {}".format(torch.tensor([[i_batch, 0, 0, 0]], device=C.device), torch.tensor([[0.0]], device=C.device)))
-                    C = torch.cat([C, torch.tensor([[i_batch, 0, 0, 0]], device=C.device)])
-                    F = torch.cat([F, torch.tensor([[0.0]], device=C.device)])
+            s_in_infill_mask = self.s_in.F[:, -1] == 1
+            s_in_infill_C = self.s_in.C[s_in_infill_mask]
+            s_F = s.features_at_coordinates(s_in_infill_C.type(torch.float))
 
-            return ME.TensorField(coordinates=C.detach(), features=F.detach(), device=self.device)
+            return ME.TensorField(
+                coordinates=s_in_infill_C,
+                features=s_F.detach() if detach else s_F,
+                device=self.device
+            )
+
+        if isinstance(self.net_D, InfillDiscriminatorPatchGAN):
+            s_in_infill_mask = self.s_in.F[:, -1] == 1
+            s_in_infill_C = self.s_in.C[s_in_infill_mask]
+            s_F = s.features_at_coordinates(s_in_infill_C.type(torch.float))
+
+            return ME.SparseTensor(
+                coordinates=s_in_infill_C,
+                features=s_F.detach() if detach else s_F,
+                device=self.device
+            )
 
     def optimize_parameters(self):
         # make prediction
@@ -510,7 +496,7 @@ class CompletionNetSigMask(nn.Module):
                 out.coordinate_map_key, strided_target_key, kernel_size=kernel_size, region_type=1
             )
             for _, curr_in in kernel_map.items():
-                arget[curr_in[0].long()] = 1
+                target[curr_in[0].long()] = 1
 
         return target
 
@@ -606,6 +592,7 @@ class CompletionNetSigMask(nn.Module):
 
         return out
 
+
 class InfillDiscriminatorPatchGAN(nn.Module):
     """
     Aim to reproduce pix2pix style PatchGAN. Sparse images will have different numbers of patches
@@ -664,14 +651,10 @@ class InfillDiscriminatorPatchGAN(nn.Module):
 
     def forward(self, x):
         patch_preds = self.model(x)
-        # Take the minimum of each batch's patch predictions to get real/fake prediction for batch
-        # ie. global min pooling
-        # My thought is D should give high scores to patches that look real and low to ones that
-        # look fake. Most of the image comes from unmasked track so it is trivial for G to make
-        # this look real. Image should be classified as fake based on the fakest looking patch D
-        # sees (this should correspond to the worst infill)
-        # Don't want to use average pool because that will depend on the number of patches of
-        # unmasked track which varies a lot
+        # Take the average of each batch's patch predictions to get final real/fake prediction.
+        # For this to work all patches must be masked areas ie. only pass infill coordinates and
+        # not the active coordinates. This means D does not know the condition of the infill but
+        # should still be able to guide the model to a more perceptually accurate infill
         batch_preds = torch.cat(
             [
                 torch.mean(patch_preds.F[patch_preds.C[:, 0] == i_b]).view(1, 1)
@@ -679,6 +662,7 @@ class InfillDiscriminatorPatchGAN(nn.Module):
             ]
         )
         return batch_preds
+
 
 class InfillDiscriminator(nn.Module):
     def __init__(
@@ -829,15 +813,6 @@ class InfillDiscriminator(nn.Module):
         y = self.conv5(x.sparse())
         x1 = self.global_max_pool(y)
         x2 = self.global_avg_pool(y)
-
-        # print("x2")
-        # print(x2)
-        # print(torch.isnan(x2.F).sum(), x2.F.size())
-        # print("y")
-        # print(y)
-        # print(torch.isnan(y.F).sum(), y.F.size())
-        # print(torch.unique(x.C[:, 0]))
-        # print("=======")
 
         return self.final(ME.cat(x1, x2)).F
 
