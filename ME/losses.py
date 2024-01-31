@@ -247,6 +247,15 @@ class GapWise(CustomLoss):
         self.lambda_loss_z_gaps_adc = getattr(conf, "loss_z_gaps_adc_weight", 0.0)
         self.lambda_loss_z_gaps_npixel = getattr(conf, "loss_z_gaps_npixel_weight", 0.0)
 
+        if (
+            self.adc_threshold is None and
+            (self.lambda_loss_x_gaps_npixel or self.lambda_loss_z_gaps_npixel)
+        ):
+            raise ValueError(
+                "Need to have an adc threshold for the final pruning layer" +
+                "in order to use npixel losses"
+            )
+
     def get_names_scalefactors(self):
         return {
             "infill_zero" : self.lambda_loss_infill_zero,
@@ -470,6 +479,15 @@ class PlaneWise(CustomLoss):
         self.lambda_loss_x_planes_npixel = getattr(conf, "loss_x_planes_npixel_weight", 0.0)
         self.lambda_loss_z_planes_adc = getattr(conf, "loss_z_planes_adc_weight", 0.0)
         self.lambda_loss_z_planes_npixel = getattr(conf, "loss_z_planes_npixel_weight", 0.0)
+
+        if (
+            self.adc_threshold is None and
+            (self.lambda_loss_x_planes_npixel or self.lambda_loss_z_planes_npixel)
+        ):
+            raise ValueError(
+                "Need to have an adc threshold for the final pruning layer" +
+                "in order to use npixel losses"
+            )
 
     def get_names_scalefactors(self):
         return {
