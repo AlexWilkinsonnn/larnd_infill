@@ -52,78 +52,77 @@ mandatory_fields = {
 }
 
 
-def get_config(config_file, overwrite_dict={}, prep_checkpoint_dir=True):
-    print("Reading config from {}".format(config_file))
+def get_config(conf_file, overwrite_dict={}, prep_checkpoint_dir=True):
+    print("Reading conf from {}".format(conf_file))
 
-    with open(config_file) as f:
-        config_dict = yaml.load(f, Loader=yaml.FullLoader)
+    with open(conf_file) as f:
+        conf_dict = yaml.load(f, Loader=yaml.FullLoader)
 
     for field, val in overwrite_dict.items():
-        config_dict[field] = val
+        conf_dict[field] = val
 
-    missing_fields = mandatory_fields - set(config_dict.keys())
+    missing_fields = mandatory_fields - set(conf_dict.keys())
     if missing_fields:
         raise ValueError(
-            "Missing mandatory fields {} in config file at {}".format(missing_fields, config_file)
+            "Missing mandatory fields {} in conf file at {}".format(missing_fields, conf_file)
         )
 
-    for option in set(defaults.keys()) - set(config_dict.keys()):
-        config_dict[option] = defaults[option]
+    for option in set(defaults.keys()) - set(conf_dict.keys()):
+        conf_dict[option] = defaults[option]
 
-    config_dict["detector"] = set_detector_properties(
-        config_dict["det_props"], config_dict["pixel_layout"], pedestal=74
+    conf_dict["detector"] = set_detector_properties(
+        conf_dict["det_props"], conf_dict["pixel_layout"], pedestal=74
     )
-    config_dict["geometry"] = get_geom_map(config_dict["pixel_layout"])
-    del config_dict["det_props"]
-    del config_dict["pixel_layout"]
+    conf_dict["geometry"] = get_geom_map(conf_dict["pixel_layout"])
+    del conf_dict["det_props"]
+    del conf_dict["pixel_layout"]
 
-    with open(config_dict["vmap_path"], "r") as f:
-        config_dict["vmap"] = yaml.load(f, Loader=yaml.FullLoader)
-    del config_dict["vmap_path"]
+    with open(conf_dict["vmap_path"], "r") as f:
+        conf_dict["vmap"] = yaml.load(f, Loader=yaml.FullLoader)
+    del conf_dict["vmap_path"]
 
-    if config_dict["data_prep_type"] == "standard":
-        config_dict["data_prep_type"] = DataPrepType.STANDARD
-    elif config_dict["data_prep_type"] == "reflection":
-        config_dict["data_prep_type"] = DataPrepType.REFLECTION
-    elif config_dict["data_prep_type"] == "reflection_separate_masks":
-        config_dict["data_prep_type"] = DataPrepType.REFLECTION_SEPARATE_MASKS
-    elif config_dict["data_prep_type"] == "reflection_norandom":
-        config_dict["data_prep_type"] = DataPrepType.REFLECTION_NORANDOM
-    elif config_dict["data_prep_type"] == "gap_distance":
-        config_dict["data_prep_type"] = DataPrepType.GAP_DISTANCE
+    if conf_dict["data_prep_type"] == "standard":
+        conf_dict["data_prep_type"] = DataPrepType.STANDARD
+    elif conf_dict["data_prep_type"] == "reflection":
+        conf_dict["data_prep_type"] = DataPrepType.REFLECTION
+    elif conf_dict["data_prep_type"] == "reflection_separate_masks":
+        conf_dict["data_prep_type"] = DataPrepType.REFLECTION_SEPARATE_MASKS
+    elif conf_dict["data_prep_type"] == "reflection_norandom":
+        conf_dict["data_prep_type"] = DataPrepType.REFLECTION_NORANDOM
+    elif conf_dict["data_prep_type"] == "gap_distance":
+        conf_dict["data_prep_type"] = DataPrepType.GAP_DISTANCE
     else:
-        raise ValueError("data_prep_type={} not recognised".format(config_dict["data_prep_type"]))
+        raise ValueError("data_prep_type={} not recognised".format(conf_dict["data_prep_type"]))
 
-    config_dict["train_data_path"] = os.path.join(config_dict["data_path"], "train")
-    config_dict["valid_data_path"] = os.path.join(config_dict["data_path"], "valid")
+    conf_dict["train_data_path"] = os.path.join(conf_dict["data_path"], "train")
+    conf_dict["valid_data_path"] = os.path.join(conf_dict["data_path"], "valid")
     if (
-        not os.path.exists(config_dict["train_data_path"]) or
-        not os.path.exists(config_dict["valid_data_path"])
+        not os.path.exists(conf_dict["train_data_path"]) or
+        not os.path.exists(conf_dict["valid_data_path"])
     ):
         raise ValueError("train and/or valid subdirs are not in data_path!")
-    del config_dict["data_path"]
+    del conf_dict["data_path"]
 
-    config_dict["adc_threshold"] = config_dict["adc_threshold"] * config_dict["scalefactors"][0]
+    if conf_dict["adc_threshold"] is not None:
+        conf_dict["adc_threshold"] = conf_dict["adc_threshold"] * conf_dict["scalefactors"][0]
 
     if prep_checkpoint_dir:
-        config_dict["checkpoint_dir"] = os.path.join(
-            config_dict["checkpoints_dir"], config_dict["name"]
-        )
-        if not os.path.exists(config_dict["checkpoint_dir"]):
-            os.makedirs(config_dict["checkpoint_dir"])
+        conf_dict["checkpoint_dir"] = os.path.join(conf_dict["checkpoints_dir"], conf_dict["name"])
+        if not os.path.exists(conf_dict["checkpoint_dir"]):
+            os.makedirs(conf_dict["checkpoint_dir"])
         else:
             print(
                 "WARNING: {} already exists, data may be overwritten".format(
-                    config_dict["checkpoint_dir"]
+                    conf_dict["checkpoint_dir"]
                 )
             )
         shutil.copyfile(
-            config_file, os.path.join(config_dict["checkpoint_dir"], os.path.basename(config_file))
+            conf_file, os.path.join(conf_dict["checkpoint_dir"], os.path.basename(conf_file))
         )
-        if not os.path.exists(os.path.join(config_dict["checkpoint_dir"], "preds")):
-            os.makedirs(os.path.join(config_dict["checkpoint_dir"], "preds"))
+        if not os.path.exists(os.path.join(conf_dict["checkpoint_dir"], "preds")):
+            os.makedirs(os.path.join(conf_dict["checkpoint_dir"], "preds"))
 
-    config_namedtuple = namedtuple("config", config_dict)
-    config = config_namedtuple(**config_dict)
+    conf_namedtuple = namedtuple("conf", conf_dict)
+    conf = conf_namedtuple(**conf_dict)
 
-    return config
+    return conf
