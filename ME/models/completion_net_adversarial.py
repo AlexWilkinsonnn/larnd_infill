@@ -291,6 +291,7 @@ class CompletionNetSigMask(nn.Module):
         final_layer="tanh",
         extra_convs=False,
         nonlinearity="elu",
+        norm_layer="batch",
         enc_ch=[16, 32, 64, 128, 256, 512, 1024],
         dec_ch=[16, 32, 64, 128, 256, 512, 1024]
     ):
@@ -300,39 +301,34 @@ class CompletionNetSigMask(nn.Module):
         self.final_pruning_threshold = final_pruning_threshold
 
         if nonlinearity == "elu":
-            nonlinearity = lambda: ME.MinkowskiELU() # just to be certain unique layers are used
+            self.nonlinearity = ME.MinkowskiELU
         elif nonlinearity == "relu":
-            nonlinearity = lambda: ME.MinkowskiReLU()
+            self.nonlinearity = ME.MinkowskiReLU
         else:
             raise ValueError("nonlinearity: {} not valid".format(nonlinearity))
+
+        if norm_layer == "batch":
+            self.norm_layer = ME.MinkowskiBatchNorm
+        elif norm_layer == "instance":
+            self.norm_layer = ME.MinkowskiInstanceNorm
+        else:
+            raise ValueError("norm_layer: {} not valid".format(norm_layer))
 
         # Encoder
         self.enc_block_s1 = nn.Sequential(
             ME.MinkowskiConvolution(
                 in_nchannel, enc_ch[0], kernel_size=3, stride=1, bias=True, dimension=3
             ),
-            ME.MinkowskiBatchNorm(enc_ch[0]),
-            nonlinearity()
+            self.norm_layer(enc_ch[0]),
+            self.nonlinearity()
         )
 
-        self.enc_block_s1s2 = self._make_encoder_block(
-            enc_ch[0], enc_ch[1], nonlinearity, extra_convs
-        )
-        self.enc_block_s2s4 = self._make_encoder_block(
-            enc_ch[1], enc_ch[2], nonlinearity, extra_convs
-        )
-        self.enc_block_s4s8 = self._make_encoder_block(
-            enc_ch[2], enc_ch[3], nonlinearity, extra_convs
-        )
-        self.enc_block_s8s16 = self._make_encoder_block(
-            enc_ch[3], enc_ch[4], nonlinearity, extra_convs
-        )
-        self.enc_block_s16s32 = self._make_encoder_block(
-            enc_ch[4], enc_ch[5], nonlinearity, extra_convs
-        )
-        self.enc_block_s32s64 = self._make_encoder_block(
-            enc_ch[5], enc_ch[6], nonlinearity, extra_convs
-        )
+        self.enc_block_s1s2 = self._make_encoder_block(enc_ch[0], enc_ch[1], extra_convs)
+        self.enc_block_s2s4 = self._make_encoder_block(enc_ch[1], enc_ch[2], extra_convs)
+        self.enc_block_s4s8 = self._make_encoder_block(enc_ch[2], enc_ch[3], extra_convs)
+        self.enc_block_s8s16 = self._make_encoder_block(enc_ch[3], enc_ch[4], extra_convs)
+        self.enc_block_s16s32 = self._make_encoder_block(enc_ch[4], enc_ch[5], extra_convs)
+        self.enc_block_s32s64 = self._make_encoder_block(enc_ch[5], enc_ch[6], extra_convs)
 
         # Decoder
         (
@@ -340,37 +336,37 @@ class CompletionNetSigMask(nn.Module):
             self.dec_block_s32_norm,
             self.dec_block_s32_post_cat_conv,
             self.dec_block_s64_conv
-        ) = self._make_decoder_block(enc_ch[6], dec_ch[5], nonlinearity, extra_convs)
+        ) = self._make_decoder_block(enc_ch[6], dec_ch[5], extra_convs)
         (
             self.dec_block_s32s16_up,
             self.dec_block_s16_norm,
             self.dec_block_s16_post_cat_conv,
             self.dec_block_s32_conv
-        ) = self._make_decoder_block(dec_ch[5], dec_ch[4], nonlinearity, extra_convs)
+        ) = self._make_decoder_block(dec_ch[5], dec_ch[4], extra_convs)
         (
             self.dec_block_s16s8_up,
             self.dec_block_s8_norm,
             self.dec_block_s8_post_cat_conv,
             self.dec_block_s16_conv
-        ) = self._make_decoder_block(dec_ch[4], dec_ch[3], nonlinearity, extra_convs)
+        ) = self._make_decoder_block(dec_ch[4], dec_ch[3], extra_convs)
         (
             self.dec_block_s8s4_up,
             self.dec_block_s4_norm,
             self.dec_block_s4_post_cat_conv,
             self.dec_block_s8_conv
-        ) = self._make_decoder_block(dec_ch[3], dec_ch[2], nonlinearity, extra_convs)
+        ) = self._make_decoder_block(dec_ch[3], dec_ch[2], extra_convs)
         (
             self.dec_block_s4s2_up,
             self.dec_block_s2_norm,
             self.dec_block_s2_post_cat_conv,
             self.dec_block_s4_conv
-        ) = self._make_decoder_block(dec_ch[2], dec_ch[1], nonlinearity, extra_convs)
+        ) = self._make_decoder_block(dec_ch[2], dec_ch[1], extra_convs)
         (
             self.dec_block_s2s1_up,
             self.dec_block_s1_norm,
             self.dec_block_s1_post_cat_conv,
             self.dec_block_s2_conv
-        ) = self._make_decoder_block(dec_ch[1], dec_ch[0], nonlinearity, extra_convs)
+        ) = self._make_decoder_block(dec_ch[1], dec_ch[0], extra_convs)
 
         self.dec_out_conv = ME.MinkowskiConvolution(
             dec_ch[0], out_nchannel, kernel_size=3, bias=True, dimension=3
@@ -391,50 +387,50 @@ class CompletionNetSigMask(nn.Module):
 
     """ __init__ helpers """
 
-    def _make_encoder_block(self, in_ch, out_ch, nonlinearity, extra_convs):
+    def _make_encoder_block(self, in_ch, out_ch, extra_convs):
         enc_block= [
             ME.MinkowskiConvolution(
                 in_ch, out_ch, kernel_size=2, stride=2, bias=True, dimension=3
             ),
-            ME.MinkowskiBatchNorm(out_ch),
-            nonlinearity(),
+            self.norm_layer(out_ch),
+            self.nonlinearity(),
             ME.MinkowskiConvolution(
                 out_ch, out_ch, kernel_size=3, bias=True, dimension=3
             ),
-            ME.MinkowskiBatchNorm(out_ch),
-            nonlinearity()
+            self.norm_layer(out_ch),
+            self.nonlinearity()
         ]
         if extra_convs:
             conv_block = [
                 ME.MinkowskiConvolution(
                     in_ch, in_ch, kernel_size=3, bias=True, dimension=3
                 ),
-                ME.MinkowskiBatchNorm(in_ch),
-                nonlinearity()
+                self.norm_layer(in_ch),
+                self.nonlinearity()
             ]
             enc_block = conv_block + enc_block
 
         return nn.Sequential(*enc_block)
 
-    def _make_decoder_block(self, in_ch, out_ch, nonlinearity, extra_convs):
+    def _make_decoder_block(self, in_ch, out_ch, extra_convs):
         dec_up = ME.MinkowskiConvolutionTranspose(
             in_ch, out_ch, kernel_size=4, stride=2, bias=True, dimension=3
         )
-        dec_post_up_norm = nn.Sequential(ME.MinkowskiBatchNorm(out_ch), nonlinearity())
+        dec_post_up_norm = nn.Sequential(ME.MinkowskiBatchNorm(out_ch), self.nonlinearity())
         dec_post_cat_conv = nn.Sequential(
             ME.MinkowskiConvolution(
                 2 * out_ch, out_ch, kernel_size=3, bias=True, dimension=3
             ),
-            ME.MinkowskiBatchNorm(out_ch),
-            nonlinearity()
+            self.norm_layer(out_ch),
+            self.nonlinearity()
         )
         if extra_convs:
             dec_extra_conv = nn.Sequential(
                 ME.MinkowskiConvolution(
                     in_ch, in_ch, kernel_size=3, bias=True, dimension=3
                 ),
-                ME.MinkowskiBatchNorm(in_ch),
-                nonlinearity()
+                self.norm_layer(in_ch),
+                self.nonlinearity()
             )
         else:
             dec_extra_conv = lambda t: t
