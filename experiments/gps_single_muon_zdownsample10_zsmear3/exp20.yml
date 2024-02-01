@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_worders: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/gps_single_muon_zdownsample10_zsmear3"
-name: "exp18"
+name: "exp20"
 train_script: "train_sigmask_adversarial"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/gps_single_muon_zdownsample10_zsmear3"
@@ -14,8 +14,8 @@ data_prep_type: "reflection"
 scalefactors: [ 0.015873015873015872, 0.5 ] # 1/63.25 (8-bit no longer makes sense as adcs get averaged over bins), 1/2
 n_feats_in: 2 # adc, num packets stacked
 n_feats_out: 1 # adc
-max_dataset_size: 200
-max_valid_dataset_size: 20
+max_dataset_size: 20000
+max_valid_dataset_size: 2000
 adc_threshold: 1 # prune all predicted adc <= 1 in final layer
 
 model_params:
@@ -27,12 +27,12 @@ model_params:
 
 net_D: "PatchGAN"
 
-D_type: "lsgan"
+D_type: "vanilla"
 fake_label: 0.0
 real_label: 1.0
-D_training_stopper:
-  window_len: 100
-  stop_loss_threshold: 0.5
+# D_training_stopper:
+#   window_len: 100
+#   stop_loss_threshold: 0.1
 
 optimizer_G: "SGD"
 optimizer_G_params:

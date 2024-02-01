@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_worders: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/gps_single_muon_zdownsample10_zsmear3"
-name: "exp18"
+name: "exp19"
 train_script: "train_sigmask_adversarial"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/gps_single_muon_zdownsample10_zsmear3"
@@ -30,9 +30,10 @@ net_D: "PatchGAN"
 D_type: "lsgan"
 fake_label: 0.0
 real_label: 1.0
-D_training_stopper:
-  window_len: 100
-  stop_loss_threshold: 0.5
+# D_training_stopper:
+#   window_len: 100
+#   stop_loss_threshold: 0.5
+D_pause_until_epoch: 15
 
 optimizer_G: "SGD"
 optimizer_G_params:
@@ -40,20 +41,20 @@ optimizer_G_params:
   momentum: 0.9
 optimizer_D: "SGD"
 optimizer_D_params:
-  lr: 0.0001
+  lr: 0.0005
   momentum: 0.9
   weight_decay: 0.0001
 
-batch_size: 4
+batch_size: 2
 loss_func: "PixelWise_L1Loss"
 epochs: 100
 lr_decay_iter: 10000
-loss_infill_zero_weight: 0.0
-loss_infill_nonzero_weight: 0.0
+loss_infill_zero_weight: 1.0
+loss_infill_nonzero_weight: 5.0
 loss_active_zero_weight: 0.0
 loss_active_nonzero_weight: 0.0
 loss_infill_weight: 0.0
-loss_active_weight: 0.1
+loss_active_weight: 0.01
 loss_infill_sum_weight: 0.0
 loss_GAN_weight: 1.0
 
