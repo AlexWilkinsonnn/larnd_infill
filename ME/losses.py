@@ -19,6 +19,9 @@ def init_loss_func(conf):
         loss = PlaneWise(conf)
     elif conf.loss_func == "Chamfer":
         loss = Chamfer(conf)
+        raise NotImplementedError(
+            "Don't think Chamfer loss is possible, would need to use point clouds"
+        )
     else:
         raise ValueError("loss_func={} not valid".format(conf.loss_func))
 
