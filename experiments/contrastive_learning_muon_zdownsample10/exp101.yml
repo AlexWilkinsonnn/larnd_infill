@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_worders: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/contrastive_learning_muon_zdownsample10"
-name: "exp100"
+name: "exp101"
 train_script: "train_sigmask_adversarial"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/contrastive_learning_muon_zdownsample10"
@@ -44,7 +44,7 @@ optimizer_D_params:
   weight_decay: 0.0001
 
 batch_size: 8
-loss_func: "PixelWise_L1Loss"
+loss_func: "PixelWise_MSELoss"
 epochs: 200
 lr_decay_iter: 5000
 loss_infill_zero_weight: 0.0
