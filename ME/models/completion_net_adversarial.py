@@ -447,25 +447,25 @@ class CompletionNetSigMask(nn.Module):
 
         return out
 
-    def _final_pruning_layer(self, t):
-        """Remove coords outside of active volume"""
-        keep = (
-            (t.C[:, 1] < self.pointcloud_size[0]) *
-            (t.C[:, 2] < self.pointcloud_size[1]) *
-            (t.C[:, 3] < self.pointcloud_size[2])
+    def _final_pruning_layer(self, t, input_t):
+        """Prune unwanted coordinates"""
+        # Don't need to check this when not generating new coordinates with the transpose convs
+        # keep = (
+        #     (t.C[:, 1] < self.pointcloud_size[0]) *
+        #     (t.C[:, 2] < self.pointcloud_size[1]) *
+        #     (t.C[:, 3] < self.pointcloud_size[2])
+        # )
+
+        if self.final_pruning_threshold is None:
+            return t
+
+        # Keep unmasked coordinates and masked coordinates where prediction is above threshold
+        keep_active = input_t.F[:, 0] != 0
+        keep_infill = torch.logical_and(
+            input_t.F[:, -1] == 1, t.F[:, 0] > self.final_pruning_threshold
         )
-        if self.final_pruning_threshold is not None:
-            keep = keep * (t.F[:, 0] > self.final_pruning_threshold)
-
+        keep = torch.logical_or(keep_active, keep_infill)
         keep = keep.squeeze()
-
-        try:
-            if not keep.shape and keep.item() or keep.sum().item() == 0:
-                return t
-        except:
-            print(keep)
-            print(keep.shape)
-            raise Exception
 
         try:
             out = self.pruning(t, keep)
@@ -547,7 +547,6 @@ class CompletionNetSigMask(nn.Module):
 
         dec_s1 = self.dec_block_s2s1_up(dec_s2, coordinates=enc_s1.coordinate_map_key)
         dec_s1 = self.dec_block_s1_norm(dec_s1)
-
         dec_s1 = ME.cat((dec_s1, enc_s1))
         dec_s1 = self.dec_block_s1_post_cat_conv(dec_s1)
 
@@ -558,7 +557,7 @@ class CompletionNetSigMask(nn.Module):
 
         out = self.final_layer(out)
 
-        out = self._final_pruning_layer(out)
+        out = self._final_pruning_layer(out, input_t)
 
         return out
 
