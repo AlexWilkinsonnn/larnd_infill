@@ -559,7 +559,7 @@ class CompletionNetSigMask(nn.Module):
         ###################################################
         dec_s2 = self.dec_block_s2_conv(enc_s2)
 
-        dec_s2 = self.dec_block_s2s1_up(dec_s2, coordinates=enc_s1.coordinate_map_key)
+        dec_s1 = self.dec_block_s2s1_up(dec_s2, coordinates=enc_s1.coordinate_map_key)
         dec_s1 = self.dec_block_s1_norm(dec_s1)
         dec_s1 = ME.cat((dec_s1, enc_s1))
         dec_s1 = self.dec_block_s1_post_cat_conv(dec_s1)

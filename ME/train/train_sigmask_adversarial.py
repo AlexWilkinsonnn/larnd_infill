@@ -38,9 +38,6 @@ def main(args):
         )
     )
 
-    for module in model.net_G.modules():
-        print(module)
-
     collate_fn = CollateCOO(
         coord_feat_pairs=(("input_coords", "input_feats"), ("target_coords", "target_feats"))
     )
