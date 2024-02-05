@@ -25,8 +25,6 @@ def main(args):
     if conf.train_script != "train_sigmask_adversarial":
         raise ValueError("Cannot run this config with train_sigmask_adversarial.py!")
 
-    device = torch.device(conf.device)
-
     model = CompletionNetAdversarial(conf)
     # XXX do I need to put the model params on gpu explicitly?
     print(
@@ -39,6 +37,9 @@ def main(args):
             sum(params.numel() for params in model.net_D.parameters()) / 1e6
         )
     )
+
+    for module in model.net_G.modules():
+        print(module)
 
     collate_fn = CollateCOO(
         coord_feat_pairs=(("input_coords", "input_feats"), ("target_coords", "target_feats"))

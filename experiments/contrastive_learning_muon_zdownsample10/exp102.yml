@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_worders: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/contrastive_learning_muon_zdownsample10"
-name: "exp100"
+name: "exp102"
 train_script: "train_sigmask_adversarial"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/contrastive_learning_muon_zdownsample10"
@@ -25,6 +25,7 @@ model_params:
   nonlinearity: "elu"
   extra_convs: False
   norm_layer: "instance"
+  use_dropout: True
 
 D_type: "vanilla"
 fake_label: 0.1

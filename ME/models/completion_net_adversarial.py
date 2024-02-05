@@ -292,6 +292,7 @@ class CompletionNetSigMask(nn.Module):
         extra_convs=False,
         nonlinearity="elu",
         norm_layer="batch",
+        use_dropout=False,
         enc_ch=[16, 32, 64, 128, 256, 512, 1024],
         dec_ch=[16, 32, 64, 128, 256, 512, 1024]
     ):
@@ -314,13 +315,17 @@ class CompletionNetSigMask(nn.Module):
         else:
             raise ValueError("norm_layer: {} not valid".format(norm_layer))
 
+        self.dropout_prob = 0.5
+        self.dropout_layer = ME.MinkowskiDropout if use_dropout else nn.Identity
+
         # Encoder
         self.enc_block_s1 = nn.Sequential(
             ME.MinkowskiConvolution(
                 in_nchannel, enc_ch[0], kernel_size=3, stride=1, bias=True, dimension=3
             ),
             self.norm_layer(enc_ch[0]),
-            self.nonlinearity()
+            self.nonlinearity(),
+            self.dropout_layer(self.dropout_prob)
         )
 
         self.enc_block_s1s2 = self._make_encoder_block(enc_ch[0], enc_ch[1], extra_convs)
@@ -377,7 +382,7 @@ class CompletionNetSigMask(nn.Module):
 
         # final layer
         if final_layer == "none":
-            self.final_layer = lambda t: t
+            self.final_layer = nn.Identity()
         elif final_layer == "tanh":
             self.final_layer = ME.MinkowskiTanh()
         elif final_layer == "hardtanh":
@@ -388,17 +393,19 @@ class CompletionNetSigMask(nn.Module):
     """ __init__ helpers """
 
     def _make_encoder_block(self, in_ch, out_ch, extra_convs):
-        enc_block= [
+        enc_block = [
             ME.MinkowskiConvolution(
                 in_ch, out_ch, kernel_size=2, stride=2, bias=True, dimension=3
             ),
             self.norm_layer(out_ch),
             self.nonlinearity(),
+            self.dropout_layer(self.dropout_prob),
             ME.MinkowskiConvolution(
                 out_ch, out_ch, kernel_size=3, bias=True, dimension=3
             ),
             self.norm_layer(out_ch),
-            self.nonlinearity()
+            self.nonlinearity(),
+            self.dropout_layer(self.dropout_prob),
         ]
         if extra_convs:
             conv_block = [
@@ -406,7 +413,8 @@ class CompletionNetSigMask(nn.Module):
                     in_ch, in_ch, kernel_size=3, bias=True, dimension=3
                 ),
                 self.norm_layer(in_ch),
-                self.nonlinearity()
+                self.nonlinearity(),
+                self.dropout_layer(self.dropout_prob),
             ]
             enc_block = conv_block + enc_block
 
@@ -416,13 +424,18 @@ class CompletionNetSigMask(nn.Module):
         dec_up = ME.MinkowskiConvolutionTranspose(
             in_ch, out_ch, kernel_size=4, stride=2, bias=True, dimension=3
         )
-        dec_post_up_norm = nn.Sequential(ME.MinkowskiBatchNorm(out_ch), self.nonlinearity())
+        dec_post_up_norm = nn.Sequential(
+            self.norm_layer(out_ch),
+            self.nonlinearity(),
+            self.dropout_layer(self.dropout_prob)
+        )
         dec_post_cat_conv = nn.Sequential(
             ME.MinkowskiConvolution(
                 2 * out_ch, out_ch, kernel_size=3, bias=True, dimension=3
             ),
             self.norm_layer(out_ch),
-            self.nonlinearity()
+            self.nonlinearity(),
+            self.dropout_layer(self.dropout_prob)
         )
         if extra_convs:
             dec_extra_conv = nn.Sequential(
@@ -430,10 +443,11 @@ class CompletionNetSigMask(nn.Module):
                     in_ch, in_ch, kernel_size=3, bias=True, dimension=3
                 ),
                 self.norm_layer(in_ch),
-                self.nonlinearity()
+                self.nonlinearity(),
+                self.dropout_layer(self.dropout_prob)
             )
         else:
-            dec_extra_conv = lambda t: t
+            dec_extra_conv = nn.Identity()
 
         return dec_up, dec_post_up_norm, dec_post_cat_conv, dec_extra_conv
 
@@ -545,7 +559,7 @@ class CompletionNetSigMask(nn.Module):
         ###################################################
         dec_s2 = self.dec_block_s2_conv(enc_s2)
 
-        dec_s1 = self.dec_block_s2s1_up(dec_s2, coordinates=enc_s1.coordinate_map_key)
+        dec_s2 = self.dec_block_s2s1_up(dec_s2, coordinates=enc_s1.coordinate_map_key)
         dec_s1 = self.dec_block_s1_norm(dec_s1)
         dec_s1 = ME.cat((dec_s1, enc_s1))
         dec_s1 = self.dec_block_s1_post_cat_conv(dec_s1)
