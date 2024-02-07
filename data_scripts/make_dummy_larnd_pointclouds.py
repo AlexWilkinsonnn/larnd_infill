@@ -30,7 +30,7 @@ def main(args):
 
     adc_per_step = ADC_PER_VOXEL_STEP / STEPS_PER_VOXEL
 
-    for i_ev in tqdm(range(args.n)):
+    for i_ev in tqdm(range(args.start_index, args.start_index + args.n)):
         start_x, stop_x = np.random.uniform(0, max_x, 2)
         start_y, stop_y = np.random.uniform(0, max_y, 2)
         start_z, stop_z = np.random.uniform(0, max_z, 2)
@@ -87,8 +87,16 @@ def parse_arguments():
     parser.add_argument("output_dir", type=str)
     parser.add_argument("vmap", type=str, help="Location of generated voxelisation map to use")
     parser.add_argument("n", type=int)
-    parser.add_argument("--plot_only", action="store_true")
-    parser.add_argument("--batch_mode", action="store_true")
+
+    parser.add_argument(
+        "--plot_only", action="store_true"
+    )
+    parser.add_argument(
+        "--batch_mode", action="store_true"
+    )
+    parser.add_argument(
+        "--start_index", type=int, default=0, help="starting number to use for naming output files"
+    )
 
     args = parser.parse_args()
 
