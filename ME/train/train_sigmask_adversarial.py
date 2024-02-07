@@ -190,6 +190,8 @@ def main(args):
             ret = model.get_current_visuals()
             s_pred, s_target, s_in = ret["s_pred"], ret["s_target"], ret["s_in"]
 
+            if conf.n_feats_out != 1:
+                raise NotImplementedError("validation loop expected predicting only adc")
             # Get loss metrics without scalefactors applied
             s_pred_unscaled = ME.SparseTensor(
                 coordinates=s_pred.C, features=s_pred.F * (1 / conf.scalefactors[0])
@@ -197,11 +199,13 @@ def main(args):
             s_in_unscaled = ME.SparseTensor(
                 coordinates=s_in.C,
                 features=torch.cat(
-                    [
-                        s_in.F[:,[0]] * (1 / conf.scalefactors[0]),
-                        s_in.F[:,[1]] * (1 / conf.scalefactors[1]),
-                        s_in.F[:,[2]] * (1 / conf.scalefactors[1])
-                    ],
+                    (
+                        [
+                            s_in .F[:, [i]] * (1 * conf.scalefactors[i])
+                            for i in range(conf.n_feats_in) 
+                        ] +
+                        [ s_in.F[:, [-1]] ]
+                    ),
                     dim=1
                 )
             )
