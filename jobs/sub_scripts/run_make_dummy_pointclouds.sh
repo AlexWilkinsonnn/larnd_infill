@@ -3,7 +3,7 @@
 #SBATCH -N1
 #SBATCH -c2
 #SBATCH --mem=10000
-#SBATCH --array=0-22
+#SBATCH --array=0-21
 #SBATCH --error=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/err/job%j.err
 #SBATCH --output=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/out/job%j.out
 
