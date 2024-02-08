@@ -31,9 +31,9 @@ def main(args):
     adc_per_step = ADC_PER_VOXEL_STEP / STEPS_PER_VOXEL
 
     for i_ev in tqdm(range(args.start_index, args.start_index + args.n)):
-        start_x, stop_x = np.random.uniform(0, max_x, 2)
-        start_y, stop_y = np.random.uniform(0, max_y, 2)
-        start_z, stop_z = np.random.uniform(0, max_z, 2)
+        start_x, stop_x = np.random.uniform(0, max_x, 2) if args.fix_x is None else args.fix_x
+        start_y, stop_y = np.random.uniform(0, max_y, 2) if args.fix_y is None else args.fix_y
+        start_z, stop_z = np.random.uniform(0, max_z, 2) if args.fix_z is None else args.fix_z
 
         dx = stop_x - start_x
         dy = stop_y - start_y
@@ -84,6 +84,13 @@ def main(args):
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
+    def start_stop(s):
+        tup = tuple(int(coord) for coord in s.split(","))
+        if len(tup) == 2:
+            return tup
+        else:
+            raise argparse.ArgumentTypeError("fix coordinate must be 'start,stop'")
+
     parser.add_argument("output_dir", type=str)
     parser.add_argument("vmap", type=str, help="Location of generated voxelisation map to use")
     parser.add_argument("n", type=int)
@@ -96,6 +103,15 @@ def parse_arguments():
     )
     parser.add_argument(
         "--start_index", type=int, default=0, help="starting number to use for naming output files"
+    )
+    parser.add_argument(
+        "--fix_x", type=start_stop, help="fix x coordinate to 'start,stop'", default=None
+    )
+    parser.add_argument(
+        "--fix_y", type=start_stop, help="fix y coordinate to 'start,stop'", default=None
+    )
+    parser.add_argument(
+        "--fix_z", type=start_stop, help="fix z coordinate to 'start,stop'", default=None
     )
 
     args = parser.parse_args()
