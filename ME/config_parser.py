@@ -8,7 +8,6 @@ from larpixsoft.geometry import get_geom_map
 
 from ME.dataset import DataPrepType
 
-
 defaults = {
     "det_props" : (
         "/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
@@ -32,7 +31,10 @@ defaults = {
     "train_script" : "train_sigmask",
     "fake_label" : 0.0,
     "real_label" : 1.0,
-    "net_D" : "PatchGAN"
+    "net_D" : "PatchGAN",
+    "save_model" : "never",
+    "load_G" : "",
+    "load_D" : ""
 }
 
 mandatory_fields = {
@@ -50,7 +52,6 @@ mandatory_fields = {
     "checkpoints_dir",
     "name"
 }
-
 
 def get_config(conf_file, overwrite_dict={}, prep_checkpoint_dir=True):
     print("Reading conf from {}".format(conf_file))
@@ -106,6 +107,13 @@ def get_config(conf_file, overwrite_dict={}, prep_checkpoint_dir=True):
     if conf_dict["adc_threshold"] is not None:
         conf_dict["adc_threshold"] = conf_dict["adc_threshold"] * conf_dict["scalefactors"][0]
 
+    if conf_dict["save_model"] not in ["never", "latest", "best", "all"]:
+        raise ValueError(
+            "'save_model': {} invalid, choose 'never', 'latest', 'best', 'all'".format(
+                conf_dict["save_model"]
+            )
+        )
+
     if prep_checkpoint_dir:
         conf_dict["checkpoint_dir"] = os.path.join(conf_dict["checkpoints_dir"], conf_dict["name"])
         if not os.path.exists(conf_dict["checkpoint_dir"]):
@@ -126,3 +134,4 @@ def get_config(conf_file, overwrite_dict={}, prep_checkpoint_dir=True):
     conf = conf_namedtuple(**conf_dict)
 
     return conf
+

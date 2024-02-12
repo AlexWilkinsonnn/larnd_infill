@@ -59,8 +59,7 @@ class LarndDataset(torch.utils.data.Dataset):
         self.x_smear_infill, self.y_smear_infill, self.z_smear_infill = xyz_smear_infill
         self.x_smear_active, self.y_smear_active, self.z_smear_active = xyz_smear_active
 
-        # NOTE mutliprocessing does not speed up this loop
-        # data_dir = os.path.join(dataroot, "valid" if valid else "train")
+        # NOTE mutliprocessing does not speed up this loop :(
         data_dir = dataroot
         self.data = []
         # adcs, stacked_pixels = [], [] # Uncomment to get scalefactors
@@ -85,7 +84,7 @@ class LarndDataset(torch.utils.data.Dataset):
             #     elif coord_feat == 1:
             #         stacked_pixels.append(feat)
 
-            # [x][y][z] = [feat_1, feat_2]
+            # [x][y][z] = [feat_1, feat_2, ...]
             self.data[-1]["xyz"] = self._coo2nested(coo, 0, 1, 2, n_feats_in)
 
             if (
@@ -385,6 +384,7 @@ class LarndDataset(torch.utils.data.Dataset):
                 )
             )
         )
+        # Avoid putting mask at the cathode
         z_gaps = (
             self.z_true_gaps +
             (
@@ -474,6 +474,7 @@ class LarndDataset(torch.utils.data.Dataset):
                                         2 * reflect_z - coord_z
                                     )
                                 )
+
             # Needs to be reflected in the negative x_direction
             elif coord_x - (self.x_gap_size + 1) in x_gaps_set:
                 reflect_x = x_gap_neg_rflct_coord[coord_x - (self.x_gap_size + 1)]

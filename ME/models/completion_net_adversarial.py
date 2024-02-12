@@ -29,6 +29,11 @@ class CompletionNetAdversarial(nn.Module):
         else:
             raise NotImplementedError("no net_D '{}' defined".format(conf.net_D))
 
+        if conf.load_G:
+            self._load_network(conf.load_G, self.net_G)
+        if conf.load_D:
+            self._load_network(conf.load_D, self.net_D)
+
         if conf.optimizer_G == "SGD":
             self.optimizer_G = optim.SGD(self.net_G.parameters(), **conf.optimizer_G_params)
         elif conf.optimizer_G == "Adam":
@@ -162,6 +167,13 @@ class CompletionNetAdversarial(nn.Module):
         )
         self.net_G.to(self.device)
         self.net_D.to(self.device)
+
+    def _load_network(self, path, net):
+        print("Loading model from {}".format(path))
+        state_dict = torch.load(path, map_location=self.device)
+        if hasattr(state_dict, "_metadata"):
+            del statedict._metadata
+        net.load_state_dict(state_dict)
 
     def new_epoch(self, epoch):
         if not self.D_training_activated and epoch >= self.D_pause_until_epoch:

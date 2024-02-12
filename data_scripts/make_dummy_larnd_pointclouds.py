@@ -85,7 +85,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser()
 
     def start_stop(s):
-        tup = tuple(int(coord) for coord in s.split(","))
+        tup = tuple(float(coord) for coord in s.split(","))
         if len(tup) == 2:
             return tup
         else:

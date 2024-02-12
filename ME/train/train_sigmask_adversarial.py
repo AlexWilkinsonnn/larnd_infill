@@ -1,4 +1,4 @@
-import time, argparse, os
+import time, argparse, os, glob
 
 from collections import defaultdict
 
@@ -10,14 +10,11 @@ from matplotlib import pyplot as plt; from matplotlib.backends.backend_pdf impor
 import torch; import torch.optim as optim; import torch.nn as nn
 import MinkowskiEngine as ME
 
-from larpixsoft.detector import set_detector_properties
-
 from ME.config_parser import get_config
 from ME.dataset import LarndDataset, CollateCOO
 from ME.models.completion_net_adversarial import CompletionNetAdversarial
-from ME.losses import init_loss_func, GapWise
+from ME.losses import GapWise
 from aux import plot_ndlar_voxels_2
-
 
 def main(args):
     conf = get_config(args.config)
@@ -84,6 +81,7 @@ def main(args):
     t0 = time.time()
     losses_acc = defaultdict(list)
     n_iter = 0
+    prev_val_loss = float("inf")
 
     write_log_str(conf.checkpoint_dir, "Iters per epoch: {}".format(len(dataloader_train)))
 
@@ -145,8 +143,8 @@ def main(args):
 
         if isinstance(conf.lr_decay_iter, str) and conf.lr_decay_iter == "epoch":
             model.scheduler_step()
-            write_log_str(conf.checkpoint_dir, "LR G {}".format(scheduler_G.get_lr()))
-            write_log_str(conf.checkpoint_dir, "LR D {}".format(scheduler_D.get_lr()))
+            write_log_str(conf.checkpoint_dir, "LR G {}".format(model.scheduler_G.get_lr()))
+            write_log_str(conf.checkpoint_dir, "LR D {}".format(model.scheduler_D.get_lr()))
         if isinstance(args.print_iter, str) and args.print_iter == "epoch":
             t_iter = time.time() - t0
             t0 = time.time()
@@ -169,8 +167,9 @@ def main(args):
             )
 
         # Save latest network
-        # print("Saving net...")
-        # model.save_networks("latest")
+        if conf.save_model in ["latest", "all"]:
+            print("Saving latest nets...")
+            model.save_networks("latest")
 
         # Validation loop
         model.eval()
@@ -202,7 +201,7 @@ def main(args):
                     (
                         [
                             s_in .F[:, [i]] * (1 * conf.scalefactors[i])
-                            for i in range(conf.n_feats_in) 
+                            for i in range(conf.n_feats_in)
                         ] +
                         [ s_in.F[:, [-1]] ]
                     ),
@@ -220,9 +219,7 @@ def main(args):
                 losses_acc_valid_unscaled[loss_name].append(loss.item())
 
             # Get infill accuracy metrics
-            infill_coords, infill_coords_zero, infill_coords_nonzero = (
-                gapwise_cls._get_infill_coords(s_in_unscaled, s_target_unscaled)
-            )
+            infill_coords, _, _ = gapwise_cls._get_infill_coords(s_in_unscaled, s_target_unscaled)
 
             for i_batch in range(len(data["mask_x"])):
                 batch_infill_coords = infill_coords[infill_coords[:, 0] == i_batch]
@@ -282,9 +279,9 @@ def main(args):
 
         loss_str = (
             "Validation with {} images:\n".format(len(dataset_valid)) +
-			get_loss_str(losses_acc_valid, loss_scalefactors) +
+            get_loss_str(losses_acc_valid, loss_scalefactors) +
             "\nUnscaled:\n" +
-			get_loss_str(losses_acc_valid_unscaled, loss_scalefactors)
+            get_loss_str(losses_acc_valid_unscaled, loss_scalefactors)
         )
         write_log_str(conf.checkpoint_dir, loss_str)
 
@@ -347,6 +344,19 @@ def main(args):
         )
         pdf_val_plots.close()
 
+        if conf.save_model in ["best", "all"]:
+            curr_val_loss = np.mean(losses_acc_valid["tot"])
+            if curr_val_loss < prev_val_loss:
+                print(
+                    "New best loss ({} < {}), saving nets...".format(curr_val_loss, prev_val_loss)
+                )
+                prev_paths = glob.glob(os.path.join(conf.checkpoint_dir, "**best_epoch**.pth"))
+                if len(prev_paths) > 2:
+                    raise Exception("About to delete {}, really?".format(prev_paths))
+                for path in prev_paths:
+                    os.remove(path)
+                model.save_networks("best_epoch{}".format(epoch))
+                prev_val_loss = curr_val_loss
 
 def write_log_str(checkpoint_dir, log_str, print_str=True):
     if print_str:
@@ -354,14 +364,12 @@ def write_log_str(checkpoint_dir, log_str, print_str=True):
     with open(os.path.join(checkpoint_dir, "losses.txt"), 'a') as f:
         f.write(log_str + '\n')
 
-
 def get_print_str(epoch, losses_acc, loss_scalefactors, n_iter, n_iter_tot, t_iter):
     return (
         "Epoch: {}, Iter: {}, Total Iter: {}, ".format(epoch, n_iter + 1, n_iter_tot + 1) +
         "Time: {:.7f}\n\t".format(t_iter) +
-		get_loss_str(losses_acc, loss_scalefactors)
+        get_loss_str(losses_acc, loss_scalefactors)
     )
-
 
 def get_loss_str(losses_acc, loss_scalefactors):
     loss_str = "Losses: total={:.7f}".format(np.mean(losses_acc["tot"]))
@@ -375,7 +383,6 @@ def get_loss_str(losses_acc, loss_scalefactors):
             )
         )
     return loss_str
-
 
 def plot_pred(
     s_pred, s_in, s_target, data, vmap, scalefactors, save_name_prefix, detector,
@@ -504,16 +511,14 @@ def plot_pred(
                 ) as f:
                     yaml.dump(target_dict, f)
 
-
 def gen_val_histo(x, bins, range, pdf, title, xlabel):
-    fig, ax = plt.subplots(figsize=(12,8))
+    _, ax = plt.subplots(figsize=(12,8))
     ax.hist(x, bins=bins, range=range, histtype="step")
     ax.set_title(title, fontsize=16)
     ax.grid(visible=True)
     ax.set_xlabel(xlabel, fontsize=12)
     pdf.savefig(bbox_inches="tight")
     plt.close()
-
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -533,7 +538,6 @@ def parse_arguments():
     args.print_iter = "epoch" if args.print_iter == -1 else args.print_iter
 
     return args
-
 
 if __name__ == "__main__":
     args = parse_arguments()
