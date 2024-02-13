@@ -172,7 +172,7 @@ class CompletionNetAdversarial(nn.Module):
         print("Loading model from {}".format(path))
         state_dict = torch.load(path, map_location=self.device)
         if hasattr(state_dict, "_metadata"):
-            del statedict._metadata
+            del state_dict._metadata
         net.load_state_dict(state_dict)
 
     def new_epoch(self, epoch):
