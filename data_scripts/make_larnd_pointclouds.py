@@ -23,7 +23,6 @@ PIXEL_LAYOUT=(
 #     "multi_tile_layout-3.0.40.yaml"
 # )
 
-
 def main(args):
     detector = set_detector_properties(DET_PROPS, PIXEL_LAYOUT, pedestal=74)
     geometry = get_geom_map(PIXEL_LAYOUT)
@@ -140,7 +139,6 @@ def main(args):
             s_voxelised
         )
 
-
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
@@ -174,7 +172,6 @@ def parse_arguments():
     args = parser.parse_args()
 
     return args
-
 
 if __name__ == "__main__":
     args = parse_arguments()
