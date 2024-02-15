@@ -10,6 +10,7 @@
 OUTPUT_DIR=$1
 VMAP_PATH=$2
 N=$3
+MODE=$4
 
 START_IDX=$((${N}*${SLURM_ARRAY_TASK_ID}))
 
@@ -20,13 +21,28 @@ echo "output dir is ${OUTPUT_DIR}"
 echo "voxel map is ${VMAP_PATH}"
 echo "number to process is ${N}"
 echo "starting index is ${START_IDX}"
+echo "mode is ${MODE} (1: normal, 2: --fix_y --fix_z --num_packet_features)"
 
 cd /home/awilkins/larnd_infill/larnd_infill
 source setups/setup.sh
 
-python data_scripts/make_dummy_larnd_pointclouds.py --batch_mode \
-                                                    --start_index $START_IDX \
-                                                    $OUTPUT_DIR \
-                                                    $VMAP_PATH \
-                                                    $N
+if [[ "$MODE" == 1 ]]; then
+  python data_scripts/make_dummy_larnd_pointclouds.py --batch_mode \
+                                                      --start_index $START_IDX \
+                                                      $OUTPUT_DIR \
+                                                      $VMAP_PATH \
+                                                      $N
+elif [[ "$MODE" == 2 ]]; then
+  python data_scripts/make_dummy_larnd_pointclouds.py --batch_mode \
+                                                      --start_index $START_IDX \
+                                                      --fix_y \
+                                                      --fix_z \
+                                                      --num_packet_feature \
+                                                      $OUTPUT_DIR \
+                                                      $VMAP_PATH \
+                                                      $N
+else
+  echo "invalid mode (${MODE})"
+  exit 1
+fi
 
