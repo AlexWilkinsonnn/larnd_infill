@@ -17,7 +17,8 @@ DETECTOR = set_detector_properties(
     pedestal=74
 )
 STEPS_PER_VOXEL = 500
-ADC_PER_VOXEL_STEP = 50
+ADC_PER_VOXEL_STEP_MU = 50
+ADC_PER_VOXEL_STEP_SIGMA = 10
 
 
 def main(args):
@@ -28,18 +29,25 @@ def main(args):
     max_y = vmap["n_voxels"]["y"] - 1
     max_z = vmap["n_voxels"]["z"] - 1
 
-    adc_per_step = ADC_PER_VOXEL_STEP / STEPS_PER_VOXEL
-
     for i_ev in tqdm(range(args.start_index, args.start_index + args.n)):
-        start_x, stop_x = np.random.uniform(0, max_x, 2) if args.fix_x is None else args.fix_x
-        start_y, stop_y = np.random.uniform(0, max_y, 2) if args.fix_y is None else args.fix_y
-        start_z, stop_z = np.random.uniform(0, max_z, 2) if args.fix_z is None else args.fix_z
+        start_x, stop_x = np.random.uniform(0, max_x, 2)
+        start_y, stop_y = np.random.uniform(0, max_y, 2)
+        start_z, stop_z = np.random.uniform(0, max_z, 2)
+        if args.fix_x:
+            stop_x = start_x
+        if args.fix_y:
+            stop_y = start_y
+        if args.fix_z:
+            stop_z = start_z
 
         dx = stop_x - start_x
         dy = stop_y - start_y
         dz = stop_z - start_z
         dr = np.sqrt(dx**2 + dy**2 + dz**2)
         num_steps = int(dr * STEPS_PER_VOXEL)
+        adc_per_step = (
+            np.random.normal(ADC_PER_VOXEL_STEP_MU, ADC_PER_VOXEL_STEP_SIGMA) / STEPS_PER_VOXEL
+        )
 
         x_eq = lambda t: start_x + dx * t
         y_eq = lambda t: start_y + dy * t
@@ -58,11 +66,14 @@ def main(args):
         coords = [[], [], [], []]
         feats = []
         for coord, data in voxel_data.items():
-            adc = data["tot_adc"]
-            for i in range(3):
-                coords[i].append(coord[i])
-            coords[3].append(0)
-            feats.append(adc)
+            feat_vals = [data["tot_adc"]]
+            if args.num_packet_feature:
+                feat_vals += [1]
+            for i_feat, feat_val in enumerate(feat_vals):
+                for i in range(3):
+                    coords[i].append(coord[i])
+                coords[3].append(i_feat)
+                feats.append(feat_val)
 
         if args.plot_only:
             print(i_ev)
@@ -77,41 +88,42 @@ def main(args):
             )
             continue
 
-        s_voxelised = sparse.COO(coords, feats, shape=(max_x, max_y, max_z, 1))
+        print(feats[:10])
+        print()
+
+        s_voxelised = sparse.COO(coords, feats, shape=(max_x, max_y, max_z, max(coords[-1]) + 1))
 
         sparse.save_npz(os.path.join(args.output_dir, "dummy_ev{}.npz".format(i_ev)), s_voxelised)
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
-    def start_stop(s):
-        tup = tuple(float(coord) for coord in s.split(","))
-        if len(tup) == 2:
-            return tup
-        else:
-            raise argparse.ArgumentTypeError("fix coordinate must be 'start,stop'")
-
     parser.add_argument("output_dir", type=str)
     parser.add_argument("vmap", type=str, help="Location of generated voxelisation map to use")
     parser.add_argument("n", type=int)
 
+    parser.add_argument("--plot_only", action="store_true"
+    )
+    parser.add_argument("--batch_mode", action="store_true")
     parser.add_argument(
-        "--plot_only", action="store_true"
+        "--start_index", type=int, default=0,
+        help="starting number to use for naming output files"
     )
     parser.add_argument(
-        "--batch_mode", action="store_true"
+        "--fix_x", action="store_true",
+        help="start_x = stop_x"
     )
     parser.add_argument(
-        "--start_index", type=int, default=0, help="starting number to use for naming output files"
+        "--fix_y", action="store_true",
+        help="start_y = stop_y"
     )
     parser.add_argument(
-        "--fix_x", type=start_stop, help="fix x coordinate to 'start,stop'", default=None
+        "--fix_z", action="store_true",
+        help="start_z = stop_z"
     )
     parser.add_argument(
-        "--fix_y", type=start_stop, help="fix y coordinate to 'start,stop'", default=None
-    )
-    parser.add_argument(
-        "--fix_z", type=start_stop, help="fix z coordinate to 'start,stop'", default=None
+        "--num_packet_feature", action="store_true",
+        help="add num packets (always 1) to feature vector"
     )
 
     args = parser.parse_args()
