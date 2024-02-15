@@ -317,6 +317,8 @@ class CompletionNetSigMask(nn.Module):
             self.nonlinearity = ME.MinkowskiELU
         elif nonlinearity == "relu":
             self.nonlinearity = ME.MinkowskiReLU
+        elif nonlinearity == "leaky_relu":
+            self.nonlinearity = ME.MinkowskiLeakyReLU
         else:
             raise ValueError("nonlinearity: {} not valid".format(nonlinearity))
 
@@ -402,6 +404,8 @@ class CompletionNetSigMask(nn.Module):
         else:
             raise ValueError("final_layer: {} not valid".format(final_layer))
 
+        self._weight_initialisation(nonlinearity)
+
     """ __init__ helpers """
 
     def _make_encoder_block(self, in_ch, out_ch, extra_convs):
@@ -462,6 +466,26 @@ class CompletionNetSigMask(nn.Module):
             dec_extra_conv = nn.Identity()
 
         return dec_up, dec_post_up_norm, dec_post_cat_conv, dec_extra_conv
+
+    def _weight_initialisation(self, nonlinearity):
+        a = 0.01 if nonlinearity == "leaky_relu" else 0
+        # NOTE I dont think the selu kaiming gain will be exactly correct for elu
+        # but should be closer then the relu gain
+        nonlinearity = "selu" if nonlinearity == "elu" else nonlinearity
+        for m in self.modules():
+            if (
+                isinstance(m, ME.MinkowskiConvolution) or
+                isinstance(m, ME.MinkowskiConvolutionTranspose)
+            ):
+                ME.utils.kaiming_normal_(m.kernel, a=a, mode="fan_in", nonlinearity=nonlinearity)
+
+            if isinstance(m, ME.MinkowskiBatchNorm):
+                nn.init.constant_(m.bn.weight, 1)
+                nn.init.constant_(m.bn.bias, 0)
+
+            if isinstance(m, ME.MinkowskiInstanceNorm):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
 
     """ end __init__ helpers """
 
