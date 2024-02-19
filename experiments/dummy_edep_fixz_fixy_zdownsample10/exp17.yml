@@ -38,7 +38,6 @@ real_label: 0.9
 optimizer_G: "Adam"
 optimizer_G_params:
   lr: 0.01
-  momentum: 0.9
 optimizer_D: "SGD"
 optimizer_D_params:
   lr: 0.0005
