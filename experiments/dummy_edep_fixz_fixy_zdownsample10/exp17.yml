@@ -35,7 +35,7 @@ real_label: 0.9
 #   window_len: 100
 #   stop_loss_threshold: 0.5
 
-optimizer_G: "adam"
+optimizer_G: "Adam"
 optimizer_G_params:
   lr: 0.01
   momentum: 0.9
