@@ -306,7 +306,8 @@ class CompletionNetSigMask(nn.Module):
         norm_layer="batch",
         use_dropout=False,
         enc_ch=[16, 32, 64, 128, 256, 512, 1024],
-        dec_ch=[16, 32, 64, 128, 256, 512, 1024]
+        dec_ch=[16, 32, 64, 128, 256, 512, 1024],
+        shallower=False
     ):
         super(CompletionNetSigMask, self).__init__()
 
@@ -331,6 +332,8 @@ class CompletionNetSigMask(nn.Module):
 
         self.dropout_prob = 0.5
         self.dropout_layer = ME.MinkowskiDropout if use_dropout else nn.Identity
+
+        self.skip_3264 = shallower
 
         # Encoder
         self.enc_block_s1 = nn.Sequential(
@@ -533,18 +536,20 @@ class CompletionNetSigMask(nn.Module):
         enc_s8 = self.enc_block_s4s8(enc_s4)
         enc_s16 = self.enc_block_s8s16(enc_s8)
         enc_s32 = self.enc_block_s16s32(enc_s16)
-        enc_s64 = self.enc_block_s32s64(enc_s32)
 
-        ###################################################
-        ## Decoder 64 -> 32
-        ###################################################
-        dec_s64 = self.dec_block_s64_conv(enc_s64)
+        if not self.shallower:
+            enc_s64 = self.enc_block_s32s64(enc_s32)
 
-        dec_s32 = self.dec_block_s64s32_up(dec_s64, coordinates=enc_s32.coordinate_map_key)
-        dec_s32 = self.dec_block_s32_norm(dec_s32)
+            ###################################################
+            ## Decoder 64 -> 32
+            ###################################################
+            dec_s64 = self.dec_block_s64_conv(enc_s64)
 
-        dec_s32 = ME.cat((dec_s32, enc_s32))
-        dec_s32 = self.dec_block_s32_post_cat_conv(dec_s32)
+            dec_s32 = self.dec_block_s64s32_up(dec_s64, coordinates=enc_s32.coordinate_map_key)
+            dec_s32 = self.dec_block_s32_norm(dec_s32)
+
+            dec_s32 = ME.cat((dec_s32, enc_s32))
+            dec_s32 = self.dec_block_s32_post_cat_conv(dec_s32)
 
         ###################################################
         ## Decoder 32 -> 16
