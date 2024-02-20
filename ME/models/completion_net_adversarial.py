@@ -537,7 +537,7 @@ class CompletionNetSigMask(nn.Module):
         enc_s16 = self.enc_block_s8s16(enc_s8)
         enc_s32 = self.enc_block_s16s32(enc_s16)
 
-        if not self.shallower:
+        if not self.skip_3264:
             enc_s64 = self.enc_block_s32s64(enc_s32)
 
             ###################################################
