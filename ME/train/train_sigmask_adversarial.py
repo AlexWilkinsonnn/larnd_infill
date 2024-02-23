@@ -16,6 +16,9 @@ from ME.models.completion_net_adversarial import CompletionNetAdversarial
 from ME.losses import GapWise
 from aux import plot_ndlar_voxels_2
 
+PRINT_N_PARAMS=True
+PRINT_FORWARD_PASS=True
+
 def main(args):
     conf = get_config(args.config)
 
@@ -23,17 +26,33 @@ def main(args):
         raise ValueError("Cannot run this config with train_sigmask_adversarial.py!")
 
     model = CompletionNetAdversarial(conf)
-    # XXX do I need to put the model params on gpu explicitly?
-    print(
-        "Generator has {:.1f} million parameters".format(
-            sum(params.numel() for params in model.net_G.parameters()) / 1e6
+    if PRINT_N_PARAMS:
+        print(
+            "Generator has {:.1f} million parameters".format(
+                sum(params.numel() for params in model.net_G.parameters()) / 1e6
+            )
         )
-    )
-    print(
-        "Discriminator has {:.1f} million parameters".format(
-            sum(params.numel() for params in model.net_D.parameters()) / 1e6
+        print(
+            "Discriminator has {:.1f} million parameters".format(
+                sum(params.numel() for params in model.net_D.parameters()) / 1e6
+            )
         )
-    )
+    if PRINT_FORWARD_PASS:
+        dummy_batch_coords = torch.cat([torch.zeros(500), torch.ones(500)]).unsqueeze(1)
+        dummy_coords = torch.cat([dummy_batch_coords, torch.randint(0, 1000, (1000, 3))], axis=1)
+        dummy_in = ME.SparseTensor(
+            coordinates=dummy_coords,
+            features=torch.rand(1000, conf.n_feats_in + 1),
+            device=model.device
+        )
+        model.net_G.print_forward_pass(dummy_in)
+        dummy_in = ME.SparseTensor(
+            coordinates=dummy_coords,
+            features=torch.rand(1000, conf.n_feats_out),
+            device=model.device
+        )
+        model.net_D.print_forward_pass(dummy_in)
+        del dummy_in
 
     collate_fn = CollateCOO(
         coord_feat_pairs=(("input_coords", "input_feats"), ("target_coords", "target_feats"))
