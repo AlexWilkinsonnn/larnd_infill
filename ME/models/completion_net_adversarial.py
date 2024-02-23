@@ -350,15 +350,17 @@ class CompletionNetSigMask(nn.Module):
         self.enc_block_s4s8 = self._make_encoder_block(enc_ch[2], enc_ch[3], extra_convs)
         self.enc_block_s8s16 = self._make_encoder_block(enc_ch[3], enc_ch[4], extra_convs)
         self.enc_block_s16s32 = self._make_encoder_block(enc_ch[4], enc_ch[5], extra_convs)
-        self.enc_block_s32s64 = self._make_encoder_block(enc_ch[5], enc_ch[6], extra_convs)
+        if not self.skip_3264:
+            self.enc_block_s32s64 = self._make_encoder_block(enc_ch[5], enc_ch[6], extra_convs)
 
         # Decoder
-        (
-            self.dec_block_s64s32_up,
-            self.dec_block_s32_norm,
-            self.dec_block_s32_post_cat_conv,
-            self.dec_block_s64_conv
-        ) = self._make_decoder_block(enc_ch[6], dec_ch[5], extra_convs)
+        if not self.skip_3264:
+            (
+                self.dec_block_s64s32_up,
+                self.dec_block_s32_norm,
+                self.dec_block_s32_post_cat_conv,
+                self.dec_block_s64_conv
+            ) = self._make_decoder_block(enc_ch[6], dec_ch[5], extra_convs)
         (
             self.dec_block_s32s16_up,
             self.dec_block_s16_norm,
@@ -540,9 +542,10 @@ class CompletionNetSigMask(nn.Module):
         if not self.skip_3264:
             enc_s64 = self.enc_block_s32s64(enc_s32)
 
-            ###################################################
-            ## Decoder 64 -> 32
-            ###################################################
+        ###################################################
+        ## Decoder 64 -> 32
+        ###################################################
+        if not self.skip_3264:
             dec_s64 = self.dec_block_s64_conv(enc_s64)
 
             dec_s32 = self.dec_block_s64s32_up(dec_s64, coordinates=enc_s32.coordinate_map_key)
