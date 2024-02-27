@@ -320,6 +320,8 @@ class CompletionNetSigMask(nn.Module):
             self.nonlinearity = ME.MinkowskiReLU
         elif nonlinearity == "leaky_relu":
             self.nonlinearity = ME.MinkowskiLeakyReLU
+        elif nonlinearity == "tanh":
+            self.nonlinearity = ME.MinkowskiTanh
         else:
             raise ValueError("nonlinearity: {} not valid".format(nonlinearity))
 
