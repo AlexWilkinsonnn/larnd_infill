@@ -2,7 +2,7 @@ det_props: "/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndla
 pixel_layout: "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
 
 device: "cuda:0"
-max_num_worders: 0
+max_num_workers: 0
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/dummy_edep_fixz_fixy_zdownsample10"
 name: "exp47"
