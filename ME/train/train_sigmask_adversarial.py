@@ -80,7 +80,8 @@ def main(args):
         conf.n_feats_in, conf.n_feats_out,
         conf.scalefactors,
         conf.xyz_smear_infill, conf.xyz_smear_active,
-        max_dataset_size=conf.max_valid_dataset_size
+        max_dataset_size=conf.max_valid_dataset_size,
+        seed=1
     )
     dataloader_valid = torch.utils.data.DataLoader(
         dataset_valid,
@@ -108,9 +109,17 @@ def main(args):
         write_log_str(conf.checkpoint_dir, "==== Epoch {} ====".format(epoch))
 
         # Training loop
+        if conf.refresh_masks_epoch > 1:
+            if (epoch % conf.refresh_masks_epoch) == 0:
+                dataloader_train.dataset.set_fill_cache()
+            else:
+                dataloader_train.dataset.set_use_cache()
+        else:
+            dataloader_train.dataset.set_cache_off()
         model.train()
         model.new_epoch(epoch)
         for n_iter_epoch, data in enumerate(dataloader_train):
+            print([ mask[:3] for mask in data["mask_x"] ])
             if not model.set_input(data):
                 n_iter += 1
                 continue
@@ -191,6 +200,11 @@ def main(args):
             model.save_networks("latest")
 
         # Validation loop
+        # Always want the same validation data
+        if epoch == 0:
+            dataloader_valid.dataset.set_fill_cache()
+        else:
+            dataloader_valid.dataset.set_use_cache()
         model.eval()
         write_log_str(conf.checkpoint_dir, "== Validation Loop ==")
         losses_acc_valid = defaultdict(list)
@@ -198,6 +212,7 @@ def main(args):
         x_gap_abs_diffs, x_gap_frac_diffs = [], []
         z_gap_abs_diffs, z_gap_frac_diffs = [], []
         for data in tqdm(dataloader_valid, desc="Val Loop"):
+            print([ mask[:3] for mask in data["mask_x"] ])
             model.set_input(data)
             model.test(compute_losses=True)
 
@@ -318,6 +333,7 @@ def main(args):
         )
 
         # plot prediction using the true gap positions
+        dataloader_valid.dataset.set_cache_off()
         dataloader_valid.dataset.set_use_true_gaps(True)
         data = next(iter(dataloader_valid))
         model.set_input(data)

@@ -34,7 +34,8 @@ defaults = {
     "net_D" : "PatchGAN",
     "save_model" : "never",
     "load_G" : "",
-    "load_D" : ""
+    "load_D" : "",
+    "refresh_masks_epoch": 1
 }
 
 mandatory_fields = {
@@ -90,10 +91,29 @@ def get_config(conf_file, overwrite_dict={}, prep_checkpoint_dir=True):
         conf_dict["data_prep_type"] = DataPrepType.REFLECTION_SEPARATE_MASKS
     elif conf_dict["data_prep_type"] == "reflection_norandom":
         conf_dict["data_prep_type"] = DataPrepType.REFLECTION_NORANDOM
+        if conf_dict["refresh_masks_epoch"] > 1:
+            print(
+                "data_prep_type 'reflection_norandom' already caches. " +
+                "Setting refresh_masks_epoch to 1"
+            )
+            conf_dict["refresh_masks_epoch"] = 1
     elif conf_dict["data_prep_type"] == "gap_distance":
         conf_dict["data_prep_type"] = DataPrepType.GAP_DISTANCE
     else:
         raise ValueError("data_prep_type={} not recognised".format(conf_dict["data_prep_type"]))
+
+    if conf_dict["refresh_masks_epoch"] > 1:
+        if conf_dict["data_prep_type"] == DataPrepType.REFLECTION_NORANDOM:
+            print(
+                "data_prep_type 'reflection_norandom' already caches. " +
+                "Setting refresh_masks_epoch to 1"
+            )
+            conf_dict["refresh_masks_epoch"] = 1
+        elif conf_dict["max_num_workers"] != 0:
+            raise ValueError(
+                "Cache will not work with multiprocessing, " +
+                "must have max_num_workers 0 if refresh_masks_epoch not 1"
+            )
 
     conf_dict["train_data_path"] = os.path.join(conf_dict["data_path"], "train")
     conf_dict["valid_data_path"] = os.path.join(conf_dict["data_path"], "valid")

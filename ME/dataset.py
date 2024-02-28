@@ -21,7 +21,9 @@ class LarndDataset(torch.utils.data.Dataset):
         n_feats_in, n_feats_out,
         feat_scalefactors,
         xyz_smear_infill, xyz_smear_active,
-        valid=False, max_dataset_size=0, seed=None
+        valid=False,
+        max_dataset_size=0,
+        seed=None
     ):
         if seed is not None:
             np.random.seed(seed)
@@ -106,6 +108,10 @@ class LarndDataset(torch.utils.data.Dataset):
         # )
         # import sys; sys.exit()
 
+        self.use_cache = False
+        self.fill_cache = False
+        self.cache = [ {} for _ in range(len(self.data)) ]
+
     """ __init__ helpers """
 
     @staticmethod
@@ -167,10 +173,29 @@ class LarndDataset(torch.utils.data.Dataset):
     def set_use_true_gaps(self, use_true_gaps):
         self.use_true_gaps = use_true_gaps
 
+    def set_use_cache(self):
+        self.use_cache=True
+        self.fill_cache=False
+
+    def set_fill_cache(self):
+        self.use_cache=False
+        self.fill_cache=True
+
+    def set_cache_off(self):
+        self.use_cache=False
+        self.fill_cache=False
+
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, index):
+        if self.use_cache:
+            ret = self.cache[index]
+            if ret:
+                return ret
+            else:
+                raise ValueError("Cache problem! Nothing cached at index {}".format(index))
+
         data = self.data[index]
 
         if self.prep_type == DataPrepType.REFLECTION_NORANDOM:
@@ -204,6 +229,9 @@ class LarndDataset(torch.utils.data.Dataset):
             )
 
         ret["data_path"] = data["data_path"]
+
+        if self.fill_cache:
+            self.cache[index] = ret
 
         return ret
 
