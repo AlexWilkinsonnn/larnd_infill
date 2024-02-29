@@ -307,7 +307,9 @@ class CompletionNetSigMask(nn.Module):
         norm_layer="batch",
         use_dropout=False,
         enc_ch=[16, 32, 64, 128, 256, 512, 1024],
-        dec_ch=[16, 32, 64, 128, 256, 512, 1024]
+        dec_ch=[16, 32, 64, 128, 256, 512, 1024],
+        enc_ks=[3, 2, 3], # enc_block_s1, enc downsample, enc conv
+        dec_ks=[3, 4, 3] # dec_out_conv, dec upsample, dec conv
     ):
         super(CompletionNetSigMask, self).__init__()
 
@@ -339,10 +341,13 @@ class CompletionNetSigMask(nn.Module):
         if not (2 <= self.depth <= 7):
             raise ValueError("len(enc_ch) {} is invalid (2 <= x <= 7)!".format(self.depth))
 
+        self.enc_ks = enc_ks
+        self.dec_ks = dec_ks
+
         # Encoder
         self.enc_block_s1 = nn.Sequential(
             ME.MinkowskiConvolution(
-                in_nchannel, enc_ch[0], kernel_size=3, stride=1, bias=True, dimension=3
+                in_nchannel, enc_ch[0], kernel_size=enc_ks[0], stride=1, bias=True, dimension=3
             ),
             self.norm_layer(enc_ch[0]),
             self.nonlinearity(),
@@ -401,7 +406,7 @@ class CompletionNetSigMask(nn.Module):
             pass
 
         self.dec_out_conv = ME.MinkowskiConvolution(
-            dec_ch[0], out_nchannel, kernel_size=3, bias=True, dimension=3
+            dec_ch[0], out_nchannel, kernel_size=self.dec_ks[0], bias=True, dimension=3
         )
 
         # pruning
@@ -424,13 +429,13 @@ class CompletionNetSigMask(nn.Module):
     def _make_encoder_block(self, in_ch, out_ch, extra_convs):
         enc_block = [
             ME.MinkowskiConvolution(
-                in_ch, out_ch, kernel_size=2, stride=2, bias=True, dimension=3
+                in_ch, out_ch, kernel_size=self.enc_ks[1], stride=2, bias=True, dimension=3
             ),
             self.norm_layer(out_ch),
             self.nonlinearity(),
             self.dropout_layer(self.dropout_prob),
             ME.MinkowskiConvolution(
-                out_ch, out_ch, kernel_size=3, bias=True, dimension=3
+                out_ch, out_ch, kernel_size=self.enc_ks[2], bias=True, dimension=3
             ),
             self.norm_layer(out_ch),
             self.nonlinearity(),
@@ -439,7 +444,7 @@ class CompletionNetSigMask(nn.Module):
         if extra_convs:
             conv_block = [
                 ME.MinkowskiConvolution(
-                    in_ch, in_ch, kernel_size=3, bias=True, dimension=3
+                    in_ch, in_ch, kernel_size=self.enc_ks[2], bias=True, dimension=3
                 ),
                 self.norm_layer(in_ch),
                 self.nonlinearity(),
@@ -451,7 +456,7 @@ class CompletionNetSigMask(nn.Module):
 
     def _make_decoder_block(self, in_ch, out_ch, extra_convs):
         dec_up = ME.MinkowskiConvolutionTranspose(
-            in_ch, out_ch, kernel_size=4, stride=2, bias=True, dimension=3
+            in_ch, out_ch, kernel_size=self.dec_ks[1], stride=2, bias=True, dimension=3
         )
         dec_post_up_norm = nn.Sequential(
             self.norm_layer(out_ch),
@@ -460,7 +465,7 @@ class CompletionNetSigMask(nn.Module):
         )
         dec_post_cat_conv = nn.Sequential(
             ME.MinkowskiConvolution(
-                2 * out_ch, out_ch, kernel_size=3, bias=True, dimension=3
+                2 * out_ch, out_ch, kernel_size=self.dec_ks[2], bias=True, dimension=3
             ),
             self.norm_layer(out_ch),
             self.nonlinearity(),
