@@ -119,7 +119,6 @@ def main(args):
         model.train()
         model.new_epoch(epoch)
         for n_iter_epoch, data in enumerate(dataloader_train):
-            print([ mask[:3] for mask in data["mask_x"] ])
             if not model.set_input(data):
                 n_iter += 1
                 continue
@@ -212,7 +211,6 @@ def main(args):
         x_gap_abs_diffs, x_gap_frac_diffs = [], []
         z_gap_abs_diffs, z_gap_frac_diffs = [], []
         for data in tqdm(dataloader_valid, desc="Val Loop"):
-            print([ mask[:3] for mask in data["mask_x"] ])
             model.set_input(data)
             model.test(compute_losses=True)
 
