@@ -87,7 +87,7 @@ def main(args):
         dataset_valid,
         batch_size=conf.batch_size,
         collate_fn=collate_fn,
-        num_workers=min(conf.max_num_workers, conf.batch_size),
+        num_workers=0,
         shuffle=True # Shuffling to see different events in saved validation image
     )
 
