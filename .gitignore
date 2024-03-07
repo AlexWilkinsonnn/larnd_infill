@@ -1,4 +1,5 @@
 *.vim
+*.pth
 
 checkpoints/*/
 __pycache__
