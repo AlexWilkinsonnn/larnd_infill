@@ -2,7 +2,8 @@
 #SBATCH -p GPU
 #SBATCH -N1
 #SBATCH -c4
-#SBATCH --gres=gpu:l40s:1
+#SBATCH --gres=gpu:1
+#SBATCH --constraint="a100|l40s"
 #SBATCH --error=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/err/job%j.err
 #SBATCH --output=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/out/job%j.out
 
