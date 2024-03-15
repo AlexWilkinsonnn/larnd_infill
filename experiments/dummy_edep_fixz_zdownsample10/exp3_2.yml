@@ -30,6 +30,8 @@ model_params:
   enc_ks: [5, 3, 3]
   dec_ks: [5, 3, 3]
 
+net_D: "off"
+
 D_type: "vanilla"
 fake_label: 0.1
 real_label: 0.9

@@ -26,6 +26,9 @@ class CompletionNetAdversarial(nn.Module):
             self.net_D = InfillDiscriminator(1, 1).to(self.device)
         elif conf.net_D == "PatchGAN":
             self.net_D = InfillDiscriminatorPatchGAN(1).to(self.device)
+        elif conf.net_D == "off":
+            # Smallest model possible, still need a model because I don't want to refactor laods
+            self.net_D = InfillDiscriminatorPatchGAN(1, 1, 1).to(self.device)
         else:
             raise NotImplementedError("no net_D '{}' defined".format(conf.net_D))
 
@@ -79,6 +82,8 @@ class CompletionNetAdversarial(nn.Module):
         self.D_training_activated = False # activated in new_epoch
         self.stop_D_training = True
 
+        self.skip_D = conf.net_D == "off" and not self.lambda_loss_GAN
+
         self.register_buffer("real_label", torch.tensor(conf.real_label, device=self.device))
         self.register_buffer("fake_label", torch.tensor(conf.fake_label, device=self.device))
 
@@ -94,7 +99,6 @@ class CompletionNetAdversarial(nn.Module):
         self.s_in = None
         self.s_target = None
         self.s_pred = None
-
 
     def set_input(self, data):
         # No images in the batch have anything to infill, not worth training on and breaks
@@ -216,9 +220,12 @@ class CompletionNetAdversarial(nn.Module):
 
     def _backward_G(self):
         # check what D makes of the output
-        pred_tensor = self._prep_D_input(self.s_pred, False)
-        pred_fake = self.net_D(pred_tensor)
-        self.loss_G_GAN = self.lossfunc_D(pred_fake, self.real_label.expand_as(pred_fake))
+        if self.skip_D:
+            self.loss_G_GAN = torch.tensor(0.0)
+        else:
+            pred_tensor = self._prep_D_input(self.s_pred, False)
+            pred_fake = self.net_D(pred_tensor)
+            self.loss_G_GAN = self.lossfunc_D(pred_fake, self.real_label.expand_as(pred_fake))
 
         # compute standard loss
         self.loss_G_pix_tot, self.loss_G_comps = self.lossfunc_G.calc_loss(
@@ -278,15 +285,16 @@ class CompletionNetAdversarial(nn.Module):
         self.forward()
 
         # update D
-        if not self.stop_D_training:
-            # print("updating D")
-            self._set_requires_grad(self.net_D, True)
-            self.optimizer_D.zero_grad()
-            self._backward_D()
-            self.optimizer_D.step()
-        else:
-            # print("not updating D")
-            pass
+        if not self.skip_D:
+            if not self.stop_D_training:
+                # print("updating D")
+                self._set_requires_grad(self.net_D, True)
+                self.optimizer_D.zero_grad()
+                self._backward_D()
+                self.optimizer_D.step()
+            else:
+                # print("not updating D")
+                pass
 
         # update G
         self._set_requires_grad(self.net_D, False)
