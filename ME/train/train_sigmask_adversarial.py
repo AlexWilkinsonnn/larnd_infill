@@ -155,7 +155,8 @@ def main(args):
                     "epoch{}-iter{}".format(epoch, n_iter_epoch + 1),
                     conf.detector,
                     save_dir=os.path.join(conf.checkpoint_dir, "preds"),
-                    save_tensors=True
+                    save_tensors=True,
+                    skip_predonly=True
                 )
             if (
                 conf.lr_decay_iter and
@@ -190,7 +191,8 @@ def main(args):
                 "epoch{}-end".format(epoch),
                 conf.detector,
                 save_dir=os.path.join(conf.checkpoint_dir, "preds"),
-                save_tensors=True
+                save_tensors=True,
+                skip_predonly=True
             )
 
         # Save latest network
@@ -347,7 +349,8 @@ def main(args):
             save_dir=os.path.join(conf.checkpoint_dir, "preds"),
             save_tensors=True,
             max_evs=1,
-            skip_target=True
+            skip_target=True,
+            skip_predonly=True
         )
         dataloader_valid.dataset.set_use_true_gaps(False)
 
@@ -419,7 +422,7 @@ def get_loss_str(losses_acc, loss_scalefactors):
 
 def plot_pred(
     s_pred, s_in, s_target, data, vmap, scalefactors, save_name_prefix, detector,
-    max_evs=2, save_dir="test/", save_tensors=False, skip_target=False
+    max_evs=2, save_dir="test/", save_tensors=False, skip_target=False, skip_predonly=False
 ):
     for i_batch, (
         coords_pred, feats_pred, coords_target, feats_target, coords_in, feats_in
@@ -487,18 +490,19 @@ def plot_pred(
             signal_mask_gap_coords=coords_sigmask_gap_packed,
             signal_mask_active_coords=coords_sigmask_active_packed
         )
-        plot_ndlar_voxels_2(
-            coords_packed_predonly, feats_list_predonly,
-            detector,
-            vmap["x"], vmap["y"], vmap["z"],
-            batch_mask_x, batch_mask_z,
-            saveas=os.path.join(
-                save_dir, "{}_batch{}_pred_predonly.pdf".format(save_name_prefix, i_batch)
-            ),
-            max_feat=150,
-            signal_mask_gap_coords=coords_sigmask_gap_packed,
-            signal_mask_active_coords=coords_sigmask_active_packed
-        )
+        if not skip_predonly:
+            plot_ndlar_voxels_2(
+                coords_packed_predonly, feats_list_predonly,
+                detector,
+                vmap["x"], vmap["y"], vmap["z"],
+                batch_mask_x, batch_mask_z,
+                saveas=os.path.join(
+                    save_dir, "{}_batch{}_pred_predonly.pdf".format(save_name_prefix, i_batch)
+                ),
+                max_feat=150,
+                signal_mask_gap_coords=coords_sigmask_gap_packed,
+                signal_mask_active_coords=coords_sigmask_active_packed
+            )
         if not skip_target:
             plot_ndlar_voxels_2(
                 coords_target_packed, feats_list_target,
