@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_worders: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/dummy_edep_fixz_zdownsample10"
-name: "exp9_1"
+name: "exp9_2"
 train_script: "train_sigmask_adversarial"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/dummy_edep_fixz_zdownsample10"
@@ -49,7 +49,7 @@ optimizer_D_params:
   momentum: 0.9
   weight_decay: 0.0001
 
-batch_size: 8
+batch_size: 6
 loss_func: "PixelWise_MSELoss"
 epochs: 200
 lr_decay_iter: 5000

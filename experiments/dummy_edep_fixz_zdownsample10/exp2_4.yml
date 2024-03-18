@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_worders: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/dummy_edep_fixz_zdownsample10"
-name: "exp9_1"
+name: "exp2_4"
 train_script: "train_sigmask_adversarial"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/dummy_edep_fixz_zdownsample10"
@@ -18,6 +18,7 @@ max_dataset_size: 20000
 max_valid_dataset_size: 2000
 adc_threshold: 0 # prune all predicted adc <= 1 in final layer
 load_G: "/home/awilkins/larnd_infill/larnd_infill/saved_models/dummy_edep_fixz_fixy_zdownsample10-exp48_3-netG_best_epoch131.pth"
+save_model: "best"
 
 model_params:
   final_layer: "hardtanh"
@@ -59,5 +60,5 @@ loss_active_zero_weight: 0.0
 loss_active_nonzero_weight: 0.0
 loss_infill_weight: 1.0
 loss_active_weight: 0.0
-loss_infill_sum_weight: 0.000001
+loss_infill_sum_weight: 0.0
 loss_GAN_weight: 0.00
