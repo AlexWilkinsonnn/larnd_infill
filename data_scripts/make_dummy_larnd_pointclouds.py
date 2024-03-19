@@ -88,8 +88,8 @@ def main(args):
             )
             continue
 
-        print(feats[:10])
-        print()
+        # print(feats[:10])
+        # print()
 
         s_voxelised = sparse.COO(coords, feats, shape=(max_x, max_y, max_z, max(coords[-1]) + 1))
 

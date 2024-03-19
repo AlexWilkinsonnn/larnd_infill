@@ -72,11 +72,16 @@ def main(args):
             if p.z() >= 50.4:
                 continue
 
+            if p.io_group in [1, 2]: # means anode faces positive z direction just because it does
+                z = p.z_global(centre=True) + args.forward_facing_anode_zshift
+            else:
+                z = p.z_global(centre=True) + args.backward_facing_anode_zshift
+
             coord_x = np.histogram([p.x + p.anode.tpc_x], bins=x_bin_edges)[0].nonzero()[0][0]
             coord_y = np.histogram([p.y + p.anode.tpc_y], bins=y_bin_edges)[0].nonzero()[0][0]
-            coord_z = np.histogram([p.z_global(centre=True)], bins=z_bin_edges)[0].nonzero()[0][0]
+            coord_z = np.histogram([z], bins=z_bin_edges)[0].nonzero()[0][0]
 
-            if p.io_group in [1, 2]: # means anode faces positive z direction just because it does
+            if p.io_group in [1, 2]:
                 smear_z = min(args.smear_z, vmap["n_voxels"]["z"] - coord_z)
             else:
                 smear_z = min(args.smear_z, coord_z + 1)
@@ -160,14 +165,14 @@ def parse_arguments():
     # Reconstructing the drift coordinate from ND-LAr packets always seems to put the packet a bit
     # closer than the true depo. Cannot figure out why from the code so just correcting it here.
     # Might need to change these values if using different larnd-sim/larpixsoft.
-    # parser.add_argument(
-    #     "--forward_facing_anode_zshift", type=float, default=0.0,
-    #     help="z shift to apply to all packets from a positive z facing anode"
-    # )
-    # parser.add_argument(
-    #     "--backward_facing_anode_zshift", type=float, default=0.0,
-    #     help="z shift to apply to all packets from a negative z facing anode"
-    # )
+    parser.add_argument(
+        "--forward_facing_anode_zshift", type=float, default=0.0,
+        help="z shift to apply to all packets from a positive z facing anode (recommend +0.38cm)"
+    )
+    parser.add_argument(
+        "--backward_facing_anode_zshift", type=float, default=0.0,
+        help="z shift to apply to all packets from a negative z facing anode (recommend -0.38cm)"
+    )
 
     args = parser.parse_args()
 
