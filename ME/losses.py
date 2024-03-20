@@ -202,9 +202,10 @@ class PixelWise(CustomLoss):
 
     def _get_summed_loss_at_coords(self, s_pred, s_target, coords):
         if coords.shape[0]:
+            # The denominator bounds the loss [0,1] since voxels are bounded [0,1] by the hardtanh
             loss = self.crit(
-                s_pred.features_at_coordinates(coords).squeeze().sum(),
-                s_target.features_at_coordinates(coords).squeeze().sum()
+                s_pred.features_at_coordinates(coords).squeeze().sum() / coords.shape[0],
+                s_target.features_at_coordinates(coords).squeeze().sum() / coords.shape[0]
             )
         else:
             loss = self.crit_sumreduction(
