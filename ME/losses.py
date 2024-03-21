@@ -252,11 +252,11 @@ class GapWise(CustomLoss):
         self.lambda_loss_z_gaps_npixel = getattr(conf, "loss_z_gaps_npixel_weight", 0.0)
 
         if (
-            self.adc_threshold is None and
+            self.adc_threshold is None or self.adc_threshold == 0 and
             (self.lambda_loss_x_gaps_npixel or self.lambda_loss_z_gaps_npixel)
         ):
             raise ValueError(
-                "Need to have an adc threshold for the final pruning layer" +
+                "Need to have an adc threshold set and >0 for the final pruning layer" +
                 "in order to use npixel losses"
             )
 
@@ -403,11 +403,11 @@ class GapWise(CustomLoss):
         ]
         # No active coords in any gaps,
         # use a token gap coord so we still have something to backprop in the end
+        # XXX Just return zero here and hope there is a pixel-wise loss with a non-zero weight in
+        # the sum
         if not active_gap_coords:
-            active_gap_coords = [next(iter(gaps))]
-            bad = True
-        else:
-            bad = False
+            # active_gap_coords = [next(iter(gaps))]
+            return torch.tensor(0.0), torch.tensor(0.0)
         gap_ranges = self._get_edge_ranges(active_gap_coords)
 
         for gap_start, gap_end in gap_ranges:
@@ -420,8 +420,14 @@ class GapWise(CustomLoss):
             if not skip_adc:
                 gap_losses_adc.append(
                     self.crit_adc(
-                        s_pred.features_at_coordinates(gap_coords).squeeze().sum(),
-                        s_target.features_at_coordinates(gap_coords).squeeze().sum()
+                        (
+                            s_pred.features_at_coordinates(gap_coords).squeeze().sum() /
+                            gap_coords.shape[0]
+                        ),
+                        (
+                            s_target.features_at_coordinates(gap_coords).squeeze().sum() /
+                            gap_coords.shape[0]
+                        )
                     )
                 )
 
@@ -433,14 +439,16 @@ class GapWise(CustomLoss):
                                 s_pred.features_at_coordinates(gap_coords).squeeze(),
                                 min=0.0, max=self.adc_threshold
                             ).sum(dtype=s_pred.F.dtype) /
-                            self.adc_threshold
+                            self.adc_threshold /
+                            gap_coords.shape[0]
                         ),
                         (
                             torch.clamp(
                                 s_target.features_at_coordinates(gap_coords).squeeze(),
                                 min=0.0, max=self.adc_threshold
                             ).sum(dtype=s_target.F.dtype) /
-                            self.adc_threshold
+                            self.adc_threshold /
+                            gap_coords.shape[0]
                         )
                     )
                 )
