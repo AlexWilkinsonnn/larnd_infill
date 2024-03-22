@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_worders: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/dummy_edep_fixz_zdownsample10"
-name: "exp17_1"
+name: "exp17_2"
 train_script: "train_sigmask_adversarial"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/dummy_edep_fixz_zdownsample10"
