@@ -9,6 +9,7 @@
 
 CONFIG_FILE=$1
 
+echo $SLURMD_NODENAME
 echo $CONFIG_FILE
 
 cd /home/awilkins/larnd_infill/larnd_infill
