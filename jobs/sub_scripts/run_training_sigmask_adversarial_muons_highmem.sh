@@ -10,6 +10,7 @@
 CONFIG_FILE=$1
 
 echo $SLURMD_NODENAME
+echo $CUDA_VISIBLE_DEVICES
 echo $CONFIG_FILE
 
 cd /home/awilkins/larnd_infill/larnd_infill
