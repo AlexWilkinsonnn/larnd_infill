@@ -13,7 +13,11 @@ def init_loss_func(conf):
         conf.loss_func == "PixelWise_BCEWithLogitsLoss"
     ):
         loss = PixelWise(conf)
-    elif conf.loss_func == "GapWise_L1Loss" or conf.loss_func == "GapWise_MSELoss":
+    elif (
+        conf.loss_func == "GapWise_L1Loss" or
+        conf.loss_func == "GapWise_MSELoss" or
+        conf.loss_func == "GapWise_L1Loss_MSELossPixelWise"
+    ):
         loss = GapWise(conf)
     elif conf.loss_func == "PlaneWise_L1Loss":
         loss = PlaneWise(conf)
@@ -232,10 +236,20 @@ class GapWise(CustomLoss):
             self.crit_adc = nn.L1Loss()
             self.crit_adc_sumreduction = nn.L1Loss(reduction="sum")
             self.crit_npixel = nn.L1Loss()
+            self.crit_adc_pixelwise = nn.L1Loss()
+            self.crit_adc_pixelwise_sumreduction = nn.L1Loss(reduction="sum")
         elif conf.loss_func == "GapWise_MSELoss":
             self.crit_adc = nn.MSELoss()
             self.crit_adc_sumreduction = nn.MSELoss(reduction="sum")
             self.crit_npixel = nn.MSELoss()
+            self.crit_adc_pixelwise = nn.MSELoss()
+            self.crit_adc_pixelwise_sumreduction = nn.MSELoss(reduction="sum")
+        elif conf.loss_func == "GapWise_L1Loss_MSELossPixelWise":
+            self.crit_adc = nn.L1Loss()
+            self.crit_adc_sumreduction = nn.L1Loss(reduction="sum")
+            self.crit_npixel = nn.L1Loss()
+            self.crit_adc_pixelwise = nn.MSELoss()
+            self.crit_adc_pixelwise_sumreduction = nn.MSELoss(reduction="sum")
         # elif conf.loss_func == "GapWise_L1Loss_BCELoss":
         #     self.crit_adc = nn.L1Loss()
         #     self.crit_adc_sumreduction = nn.L1Loss(reduction="sum")
@@ -375,12 +389,12 @@ class GapWise(CustomLoss):
 
     def _get_loss_at_coords(self, s_pred, s_target, coords):
         if coords.shape[0]:
-            loss = self.crit_adc(
+            loss = self.crit_adc_pixelwise(
                 s_pred.features_at_coordinates(coords).squeeze(),
                 s_target.features_at_coordinates(coords).squeeze()
             )
         else:
-            loss = self.crit_adc_sumreduction(
+            loss = self.crit_adc_pixelwise_sumreduction(
                 s_pred.features_at_coordinates(coords).squeeze(),
                 s_target.features_at_coordinates(coords).squeeze()
             )
