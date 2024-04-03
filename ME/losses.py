@@ -4,7 +4,7 @@ from collections import namedtuple
 import MinkowskiEngine as ME
 import torch; import torch.nn as nn; from torch.nn.utils.rnn import pad_sequence
 from chamfer_distance import ChamferDistance
-
+from .soft_dtw_cuda_myfork import SoftDTW
 
 def init_loss_func(conf):
     if (
@@ -26,6 +26,8 @@ def init_loss_func(conf):
         raise NotImplementedError(
             "Don't think Chamfer loss is possible, would need to use point clouds"
         )
+    elif conf.loss_func == "SoftDTW":
+        loss = InfillSoftDTW(conf)
     else:
         raise ValueError("loss_func={} not valid".format(conf.loss_func))
 
@@ -770,4 +772,236 @@ class Chamfer(CustomLoss):
         infill_coords_nonzero_pred = infill_coords[infill_coords_nonzero_pred_mask]
 
         return infill_coords_nonzero_pred, infill_coords_nonzero_target
+
+
+class InfillSoftDTW(CustomLoss):
+    """
+    SoftDTW loss applied to pixels in each gap.
+    The pixels are ordered by x then y then z (t) for x gaps, z (t) then x then y for z (t) gaps.
+    """
+    def __init__(self, conf, override_opts={}):
+        if override_opts:
+            conf_dict = conf._asdict()
+            for opt_name, opt_val in override_opts.items():
+                conf_dict[opt_name] = opt_val
+            conf_namedtuple = namedtuple("config", conf_dict)
+            conf = conf_namedtuple(**conf_dict)
+
+        self.sdtw = SoftDTW(True, gamma=getattr(conf, "sdtw_gamma", 1.0), normalize=True)
+        self.crit_adc = nn.MSELoss()
+
+        self.device = torch.device(conf.device)
+
+        self.lambda_loss_infill = getattr(conf, "loss_infill_weight", 0.0)
+        self.lambda_loss_x_gaps_sdtw = getattr(conf, "loss_x_gaps_sdtw_weight", 0.0)
+        self.lambda_loss_z_gaps_sdtw = getattr(conf, "loss_z_gaps_sdtw_weight", 0.0)
+
+        if conf.adc_threshold is None:
+            # Is this true?
+            raise ValueError(
+                "Need to have an adc threshold for the final pruning layer" +
+                "in order to use DTW loss sensibly"
+            )
+
+    def get_names_scalefactors(self):
+        return {
+            "x_gaps_sdtw" : self.lambda_loss_x_gaps_sdtw,
+            "z_gaps_sdtw" : self.lambda_loss_z_gaps_sdtw,
+            "infill" : self.lambda_loss_infill
+        }
+
+    def calc_loss(self, s_pred, s_in, s_target, data):
+        batch_size = len(data["mask_x"])
+
+        infill_coords, infill_coords_pred, infill_coords_target = self._get_infill_coords(
+            s_in, s_pred, s_target
+        )
+
+        losses_infill = []
+        losses_x_gaps_sdtw, losses_z_gaps_sdtw = [], []
+
+        # Get losses for each event in batch
+        for i_batch in range(batch_size):
+            batch_infill_coords = self._get_batch_coords(infill_coords, i_batch)
+            batch_infill_coords_pred = self._get_batch_coords(infill_coords_pred, i_batch)
+            batch_infill_coords_target = self._get_batch_coords(infill_coords_target, i_batch)
+
+            if self.lambda_loss_infill:
+                losses_infill.append(
+                    self._get_loss_at_coords(s_pred, s_target, batch_infill_coords)
+                )
+
+            if self.lambda_loss_x_gaps_sdtw:
+                losses_x_gaps_sdtw.append(
+                    self._get_gap_sdtw_loss(
+                        s_pred, s_target,
+                        batch_infill_coords, batch_infill_coords_pred, batch_infill_coords_target,
+                        set(data["mask_x"][i_batch]),
+                        1
+                    )
+                )
+
+            if self.lambda_loss_z_gaps_sdtw:
+                losses_z_gaps_sdtw.append(
+                    self._get_gap_sdtw_loss(
+                        s_pred, s_target,
+                        batch_infill_coords, batch_infill_coords_pred, batch_infill_coords_target,
+                        set(data["mask_z"][i_batch]),
+                        3
+                    )
+                )
+
+        # Average each loss over the batch and calculate total loss
+        loss_tot, losses = 0.0, {}
+        if self.lambda_loss_infill:
+            loss = sum(losses_infill) / batch_size
+            loss_tot += self.lambda_loss_infill * loss
+            losses["infill"] = loss
+        if self.lambda_loss_x_gaps_sdtw:
+            loss = sum(losses_x_gaps_sdtw) / batch_size
+            loss_tot += self.lambda_loss_x_gaps_sdtw * loss
+            losses["x_gaps_sdtw"] = loss
+        if self.lambda_loss_z_gaps_sdtw:
+            loss = sum(losses_z_gaps_sdtw) / batch_size
+            loss_tot += self.lambda_loss_z_gaps_sdtw * loss
+            losses["z_gaps_sdtw"] = loss
+
+        return loss_tot, losses
+
+    def _get_infill_coords(self, s_in, s_pred, s_target):
+        s_in_infill_mask = s_in.F[:, -1] == 1
+        infill_coords = s_in.C[s_in_infill_mask].type(torch.float)
+
+        # Predicted and target triggered pixels in gaps
+        infill_coords_pred_mask = s_pred.features_at_coordinates(infill_coords)[:, 0] != 0
+        infill_coords_pred = infill_coords[infill_coords_pred_mask]
+        infill_coords_target_mask = s_target.features_at_coordinates(infill_coords)[:, 0] != 0
+        infill_coords_target = infill_coords[infill_coords_target_mask]
+
+        return infill_coords, infill_coords_pred, infill_coords_target
+
+    def _get_batch_coords(self, coords, i_batch):
+        return coords[coords[:, 0] == i_batch]
+
+    def _get_loss_at_coords(self, s_pred, s_target, coords):
+        if coords.shape[0]:
+            return self.crit_adc(
+                s_pred.features_at_coordinates(coords).squeeze(),
+                s_target.features_at_coordinates(coords).squeeze()
+            )
+        else:
+            return torch.tensor(0.0)
+
+    def _get_gap_sdtw_loss(
+        self,
+        s_pred, s_target,
+        infill_coords, infill_coords_pred, infill_coords_target,
+        gaps, gap_idx
+    ):
+        gap_sdtw_losses = []
+
+        # Find gaps that contain reflection mask
+        active_gap_coords = {
+            int(gap_coord)
+            for gap_coord in torch.unique(infill_coords[:, 1]).tolist()
+                if int(gap_coord) in gaps
+        }
+        if not active_gap_coords:
+            return torch.tensor(0.0)
+        gap_ranges = self._get_edge_ranges(active_gap_coords)
+
+        active_gaps = 0
+
+        for gap_start, gap_end in gap_ranges:
+            # Get data for this gap
+            coords_pred = self._get_coords_at_gap(
+                infill_coords_pred, gap_start, gap_end, gap_idx
+            )
+            feats_pred = s_pred.features_at_coordinates(coords_pred)
+            coords_target = self._get_coords_at_gap(
+                infill_coords_target, gap_start, gap_end, gap_idx
+            )
+            feats_target = s_target.features_at_coordinates(coords_target)
+
+            # If both sequences are empty, CUDA error
+            # If one sequence is empty, infinite loss
+            # I think best option is to have no gradient in these cases
+            if not coords_pred.shape[0] or not coords_target.shape[0]:
+                gap_sdtw_losses.append(torch.tensor(0.0, device=self.device))
+                continue
+
+            # Don't need batch dimension anymore
+            coords_pred = coords_pred[:, 1:]
+            coords_target = coords_target[:, 1:]
+
+            # Order the pixel features using the coordinates
+            coords_pred_i = [ i for i in range(coords_pred.shape[0]) ]
+            if gap_idx == 1:
+                coords_pred_i_ordered = sorted(
+                    coords_pred_i,
+                    key=lambda idx: (
+                        (coords_pred[idx, 0], coords_pred[idx, 1], coords_pred[idx, 2])
+                    )
+                )
+            elif gap_idx == 3:
+                coords_pred_i_ordered = sorted(
+                    coords_pred_i,
+                    key=lambda idx: (
+                        (coords_pred[idx, 2], coords_pred[idx, 0], coords_pred[idx, 1])
+                    )
+                )
+            else:
+                raise NotImplementedError
+            feats_pred_ordered = torch.take(
+                feats_pred,
+                torch.tensor(coords_pred_i_ordered, dtype=torch.long, device=self.device)
+            )
+            coords_target_i = [ i for i in range(coords_target.shape[0]) ]
+            if gap_idx == 1:
+                coords_target_i_ordered = sorted(
+                    coords_target_i,
+                    key=lambda idx: (
+                        (coords_target[idx, 0], coords_target[idx, 1], coords_target[idx, 2])
+                    )
+                )
+            elif gap_idx == 3:
+                coords_target_i_ordered = sorted(
+                    coords_target_i,
+                    key=lambda idx: (
+                        (coords_target[idx, 2], coords_target[idx, 0], coords_target[idx, 1])
+                    )
+                )
+            else:
+                raise NotImplementedError
+            feats_target_ordered = torch.take(
+                feats_target,
+                torch.tensor(coords_target_i_ordered, dtype=torch.long, device=self.device)
+            )
+
+            # Compute SoftDTW loss
+            loss = self.sdtw(
+                feats_pred_ordered.view(1, -1, 1), feats_target_ordered.view(1, -1, 1)
+            ).squeeze()
+            gap_sdtw_losses.append(loss)
+            active_gaps += 1
+
+        # Average over batches
+        gap_sdtw_loss = (
+            sum(gap_sdtw_losses) / active_gaps if active_gaps else sum(gap_sdtw_losses)
+        )
+
+        return gap_sdtw_loss
+
+    @staticmethod
+    def _get_edge_ranges(nums):
+        nums = sorted(nums)
+        discontinuities = [ [s, e] for s, e in zip(nums, nums[1:]) if s + 1 < e ]
+        edges = iter(nums[:1] + sum(discontinuities, []) + nums[-1:])
+        return list(zip(edges, edges))
+
+    def _get_coords_at_gap(self, coords, gap_start, gap_end, gap_idx):
+        gap_mask = sum(
+            coords[:, gap_idx] == gap_coord for gap_coord in range(gap_start, gap_end + 1)
+        )
+        return coords[gap_mask.type(torch.bool)]
 
