@@ -56,6 +56,6 @@ lr_decay_iter: 5000
 
 loss_x_gaps_sdtw_weight: 0.01
 loss_z_gaps_sdtw_weight: 0.01
-loss_infill_weight: 0.0
+loss_infill_weight: 0.0000001 # Still want a trivial weight so that there is something to backprop for cases where sdtw cannot be computed (zero sequence lengths)
 loss_GAN_weight: 0.00
 
