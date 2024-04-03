@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_worders: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/dummy_edep_zdownsample10"
-name: "exp7"
+name: "exp10"
 train_script: "train_sigmask_adversarial"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/dummy_edep_zdownsample10"
@@ -54,8 +54,8 @@ loss_func: "SoftDTW"
 epochs: 200
 lr_decay_iter: 5000
 
-loss_x_gaps_sdtw_weight: 0.01
-loss_z_gaps_sdtw_weight: 0.01
-loss_infill_weight: 0.0
+loss_x_gaps_sdtw_weight: 0.001
+loss_z_gaps_sdtw_weight: 0.001
+loss_infill_weight: 1.0
 loss_GAN_weight: 0.00
 
