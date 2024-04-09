@@ -175,12 +175,18 @@ class LarndDataset(torch.utils.data.Dataset):
         self.use_true_gaps = use_true_gaps
 
     def set_use_cache(self):
-        self.use_cache=True
-        self.fill_cache=False
+        if self.prep_type == DataPrepType.REFLECTION_NORANDOM:
+            self.set_cache_off()
+        else:
+            self.use_cache=True
+            self.fill_cache=False
 
     def set_fill_cache(self):
-        self.use_cache=False
-        self.fill_cache=True
+        if self.prep_type == DataPrepType.REFLECTION_NORANDOM:
+            self.set_cache_off()
+        else:
+            self.use_cache=False
+            self.fill_cache=True
 
     def set_cache_off(self):
         self.use_cache=False
