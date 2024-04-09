@@ -61,6 +61,9 @@ class LarndDataset(torch.utils.data.Dataset):
         self.x_smear_infill, self.y_smear_infill, self.z_smear_infill = xyz_smear_infill
         self.x_smear_active, self.y_smear_active, self.z_smear_active = xyz_smear_active
 
+        self.use_cache = False
+        self.fill_cache = False
+
         # NOTE mutliprocessing does not speed up this loop :(
         data_dir = dataroot
         self.data = []
@@ -99,6 +102,8 @@ class LarndDataset(torch.utils.data.Dataset):
             if prep_type == DataPrepType.REFLECTION_NORANDOM:
                 self._init_getitem_reflection(-1)
 
+        self.cache = [ {} for _ in range(len(self.data)) ]
+
         # # Uncomment to get scalefactors
         # print("adcs: min={} max={} mean={}".format(min(adcs), max(adcs), np.mean(adcs)))
         # print(
@@ -107,10 +112,6 @@ class LarndDataset(torch.utils.data.Dataset):
         #     )
         # )
         # import sys; sys.exit()
-
-        self.use_cache = False
-        self.fill_cache = False
-        self.cache = [ {} for _ in range(len(self.data)) ]
 
     """ __init__ helpers """
 
