@@ -272,7 +272,7 @@ class GapWise(CustomLoss):
             (self.lambda_loss_x_gaps_npixel or self.lambda_loss_z_gaps_npixel)
         ):
             raise ValueError(
-                "Need to have an adc threshold set and >0 for the final pruning layer" +
+                "Need to have an adc threshold set and >0 for the final pruning layer " +
                 "in order to use npixel losses"
             )
 
