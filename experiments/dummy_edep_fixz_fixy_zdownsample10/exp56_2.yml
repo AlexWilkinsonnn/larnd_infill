@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_worders: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/dummy_edep_fixz_fixy_zdownsample10"
-name: "exp53_4"
+name: "exp56_2"
 train_script: "train_sigmask_adversarial"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/dummy_edep_fixz_fixy_zdownsample10"
@@ -39,7 +39,7 @@ real_label: 0.9
 
 optimizer_G: "SGD"
 optimizer_G_params:
-  lr: 0.01
+  lr: 0.005
   momentum: 0.9
 optimizer_D: "SGD"
 optimizer_D_params:
