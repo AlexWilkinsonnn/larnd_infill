@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_worders: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/gps_multi_muon_zdownsample10"
-name: "exp3"
+name: "exp2"
 train_script: "train_sigmask_adversarial"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/gps_multi_muon_zdownsample10"
