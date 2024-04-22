@@ -3,8 +3,8 @@
 #SBATCH -N1
 #SBATCH -c4
 #SBATCH --gres=gpu:1
-#SBATCH --error=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/err/job%j.err
-#SBATCH --output=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/out/job%j.out
+#SBATCH --error=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/err/job.%x.%j.err
+#SBATCH --output=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/out/job.%x.%j.out
 
 CONFIG_FILE=$1
 
