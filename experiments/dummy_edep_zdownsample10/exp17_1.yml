@@ -17,7 +17,7 @@ n_feats_out: 1 # adc
 max_dataset_size: 20000
 max_valid_dataset_size: 2000
 adc_threshold: 0 # prune all predicted adc <= 1 in final layer
-load_G: "/home/awilkins/larnd_infill/larnd_infill/saved_models/dummy_edep_fixz_zdownsample10-exp31_2_deep256extraconvs-netG_best_epoch11.pth"
+load_G: "/home/awilkins/larnd_infill/larnd_infill/saved_models/dummy_edep_fixz_zdownsample10-exp32_2_deep256extraconvs-netG_best_epoch11.pth"
 save_model: "best"
 
 model_params:
