@@ -10,7 +10,7 @@ import MinkowskiEngine as ME
 
 from larpixsoft.detector import set_detector_properties
 
-from ME.config_parser import get_config
+from ME.config_parsers.parser_train import get_config
 from ME.dataset import LarndDataset, CollateCOO
 from aux import plot_ndlar_voxels_2
 

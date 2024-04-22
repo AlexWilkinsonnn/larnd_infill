@@ -12,7 +12,7 @@ import MinkowskiEngine as ME
 
 from larpixsoft.detector import set_detector_properties
 
-from ME.config_parser import get_config
+from ME.config_parsers.parser_train import get_config
 from ME.dataset import LarndDataset, CollateCOO
 from ME.models.completion_net import CompletionNetSigMask
 from ME.losses import init_loss_func, GapWise

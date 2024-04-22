@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt; from matplotlib.backends.backend_pdf impor
 import torch; import torch.optim as optim; import torch.nn as nn
 import MinkowskiEngine as ME
 
-from ME.config_parser import get_config
+from ME.config_parsers.parser_train import get_config
 from ME.dataset import LarndDataset, CollateCOO
 from ME.models.completion_net_adversarial import CompletionNetAdversarial
 from ME.losses import GapWise
