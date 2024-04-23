@@ -15,13 +15,6 @@ DET_PROPS="/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar
 PIXEL_LAYOUT=(
     "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
 )
-# DET_PROPS=(
-#     "/home/alex/Documents/extrapolation/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
-# )
-# PIXEL_LAYOUT=(
-#     "/home/alex/Documents/extrapolation/larnd-sim/larndsim/pixel_layouts/"
-#     "multi_tile_layout-3.0.40.yaml"
-# )
 
 def main(args):
     detector = set_detector_properties(DET_PROPS, PIXEL_LAYOUT, pedestal=74)
@@ -36,6 +29,33 @@ def main(args):
     message = "pixel_pitch mismatch {} and {}".format(detector.pixel_pitch, vmap["pixel_pitch"])
     assert assertion, message
 
+    f = h5py.File(args.input_file, "r")
+
+    make_voxels(
+        detector,
+        geometry,
+        vmap,
+        f["packets"], f["mc_packets_assn"], f["tracks"],
+        args.output_dir, os.path.basename(args.input_file).split(".h5")[0],
+        forward_facing_anode_zshift=args.forward_facing_anode_zshift,
+        backward_facing_anode_zshift=args.backward_facing_anode_zshift,
+        check_z_local=True,
+        smear_z=args.smear_z,
+        plot_only=args.plot_only,
+    )
+
+def make_voxels(
+    detector,
+    geometry,
+    vmap,
+    raw_packets, raw_mc_packets_assn, raw_tracks,
+    output_dir, output_prefix,
+    forward_facing_anode_zshift=0.0,
+    backward_facing_anode_zshift=0.0,
+    check_z_local=False,
+    smear_z=1,
+    plot_only=False
+):
     x_bin_edges = sorted([ bin[0] for bin in vmap["x"] if type(bin) == tuple ])
     x_bin_edges.append(max(bin[1] for bin in vmap["x"] if type(bin) == tuple))
     x_bin_edges = np.array(x_bin_edges)
@@ -46,12 +66,10 @@ def main(args):
     z_bin_edges.append(max(bin[1] for bin in vmap["z"] if type(bin) == tuple))
     z_bin_edges = np.array(z_bin_edges)
 
-    f = h5py.File(args.input_file, "r")
-
-    tracks = None
     packets = get_events_no_cuts(
-        f['packets'], f['mc_packets_assn'], f['tracks'], geometry, detector, no_tracks=True
+        raw_packets, raw_mc_packets_assn, raw_tracks, geometry, detector, no_tracks=True
     )
+    tracks=None
     # packets, tracks = get_events_no_cuts(
     #     f['packets'], f['mc_packets_assn'], f['tracks'], geometry, detector, no_tracks=False
     # )
@@ -62,32 +80,26 @@ def main(args):
             if p.timestamp < p.t_0:
                 raise Exception("p.timestamp < p.t_0. {} and {}".format(p.timestamp, p.t_0))
 
-            # if p.ADC == 0:
-            #     continue
-
             # This still happens rarely.
             # Accounting for time of interaction with LAr (~0.3us max) and diffusion (~0.02cm max)
             # does not explain some of the p.z() seen.
             # Don't understand but ignoring as for most events there are none.
-            if p.z() >= 50.4:
+            if check_z_local and p.z() >= 50.4:
                 continue
 
             if p.io_group in [1, 2]: # means anode faces positive z direction just because it does
-                z = p.z_global(centre=True) + args.forward_facing_anode_zshift
+                z = p.z_global(centre=True) + forward_facing_anode_zshift
             else:
-                z = p.z_global(centre=True) + args.backward_facing_anode_zshift
+                z = p.z_global(centre=True) + backward_facing_anode_zshift
 
             coord_x = np.histogram([p.x + p.anode.tpc_x], bins=x_bin_edges)[0].nonzero()[0][0]
             coord_y = np.histogram([p.y + p.anode.tpc_y], bins=y_bin_edges)[0].nonzero()[0][0]
             coord_z = np.histogram([z], bins=z_bin_edges)[0].nonzero()[0][0]
 
             if p.io_group in [1, 2]:
-                smear_z = min(args.smear_z, vmap["n_voxels"]["z"] - coord_z)
+                smear_z = min(smear_z, vmap["n_voxels"]["z"] - coord_z)
             else:
-                smear_z = min(args.smear_z, coord_z + 1)
-
-            if smear_z != args.smear_z:
-                print(smear_z, args.smear_z, coord_z)
+                smear_z = min(smear_z, coord_z + 1)
 
             for shift in range(smear_z):
                 coord = (coord_x, coord_y, coord_z + (shift if p.io_group in [1, 2] else -shift))
@@ -109,7 +121,7 @@ def main(args):
                 coords[3].append(i_feat)
                 feats.append(data[feat_name])
 
-        if args.plot_only:
+        if plot_only:
             print(i_ev)
             plot_ndlar_voxels_2(
                 [
@@ -137,11 +149,7 @@ def main(args):
         )
 
         sparse.save_npz(
-            os.path.join(
-                args.output_dir,
-                os.path.basename(args.input_file).split(".h5")[0] + "_ev{}.npz".format(i_ev)
-            ),
-            s_voxelised
+            os.path.join(output_dir, output_prefix + "_ev{}.npz".format(i_ev)), s_voxelised
         )
 
 def parse_arguments():
