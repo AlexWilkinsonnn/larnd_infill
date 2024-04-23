@@ -79,13 +79,13 @@ def main(args, overwrite_dict):
             s_in, s_pred = vis["s_in"], vis["s_pred"]
             s_in_infill_mask = s_in.F[:, -1] == 1
             infill_coords = s_in.C[s_in_infill_mask].type(torch.float)
-            
+
             b_size = len(data["mask_x"])
             for i_b in range(b_size):
                 event_id = int(os.path.basename(data["data_path"][i_b]).rstrip(".npz"))
 
                 orig_p3d = in_f["3d_packets"][in_f["3d_packets"]["eventID"] == event_id]
-        
+
                 infill_coords_b = infill_coords[infill_coords[:, 0] == i_b]
                 infill_feats_b = s_pred.features_at_coordinates(infill_coords_b)
                 infill_feats_b_nonzero_mask = infill_feats_b[:, 0] != 0
