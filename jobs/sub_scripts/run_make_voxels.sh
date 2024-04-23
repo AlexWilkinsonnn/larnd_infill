@@ -30,14 +30,14 @@ cd /home/awilkins/larnd_infill/larnd_infill
 source setups/setup.sh
 
 if [[ "$MODE" == 1 ]]; then
-  python data_scripts/make_larnd_pointclouds.py --batch_mode $input_file $OUTPUT_DIR $VMAP_PATH
+  python data_scripts/make_larnd_voxels.py --batch_mode $input_file $OUTPUT_DIR $VMAP_PATH
 elif [[ "$MODE" == 2 ]]; then
-  python data_scripts/make_larnd_pointclouds.py --batch_mode \
-                                                --forward_facing_anode_zshift 0.38 \
-                                                --backward_facing_anode_zshift -0.38 \
-                                                $input_file \
-                                                $OUTPUT_DIR \
-                                                $VMAP_PATH
+  python data_scripts/make_larnd_voxels.py --batch_mode \
+                                           --forward_facing_anode_zshift 0.38 \
+                                           --backward_facing_anode_zshift -0.38 \
+                                           $input_file \
+                                           $OUTPUT_DIR \
+                                           $VMAP_PATH
 else
   echo "invalid mode (${MODE})"
   exit 1

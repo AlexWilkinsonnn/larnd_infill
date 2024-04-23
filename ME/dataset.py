@@ -680,7 +680,7 @@ class CollateCOO:
                 coords=coords_list, feats=feats_list
             )
             # NOTE Doing the next step and making a SparseTensor here causes problems when using
-            # num_workers in DataLoader since subprocess needs tries to pickle the SparseTensor
+            # num_workers in DataLoader since needs tries to pickle the SparseTensor
             # which is not possible
 
         for extra_key in set(data_list[0].keys()) - self.required_keys:
@@ -697,7 +697,7 @@ class DataPrepType(Enum):
     GAP_DISTANCE = 5
 
 
-# Testing
+# Testing mess _/0_0\_
 if __name__ == "__main__":
     train_data_path = "/share/rcifdata/awilkins/larnd_infill_data/contrastive_learning_muon_zdownsample10/train"
     # train_data_path = "/share/rcifdata/awilkins/larnd_infill_data/zdownsampe10/train"

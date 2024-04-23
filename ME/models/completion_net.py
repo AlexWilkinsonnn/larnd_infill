@@ -5,7 +5,7 @@ import MinkowskiEngine as ME
 class CompletionNetSigMask(nn.Module):
     def __init__(
         self,
-        pointcloud_size,
+        voxelspace_size,
         in_nchannel=1, out_nchannel=1,
         final_pruning_threshold=None,
         final_layer="tanh",
@@ -15,7 +15,7 @@ class CompletionNetSigMask(nn.Module):
     ):
         nn.Module.__init__(self)
 
-        self.pointcloud_size = pointcloud_size
+        self.voxelspace_size = voxelspace_size
         self.final_pruning_threshold = final_pruning_threshold
 
         if nonlinearity == "elu":
@@ -231,9 +231,9 @@ class CompletionNetSigMask(nn.Module):
     def _final_pruning_layer(self, t):
         """Remove coords outside of active volume"""
         keep = (
-            (t.C[:, 1] < self.pointcloud_size[0]) *
-            (t.C[:, 2] < self.pointcloud_size[1]) *
-            (t.C[:, 3] < self.pointcloud_size[2])
+            (t.C[:, 1] < self.voxelspace_size[0]) *
+            (t.C[:, 2] < self.voxelspace_size[1]) *
+            (t.C[:, 3] < self.voxelspace_size[2])
         )
         if self.final_pruning_threshold is not None:
             keep = keep * (t.F[:, 0] > self.final_pruning_threshold)

@@ -26,10 +26,10 @@ source setups/setup.sh
 
 for file in ${INPUT_DIR%/}/*; do
   echo $file
-  python data_scripts/make_larnd_pointclouds.py --batch_mode \
-                                                --smear_z $SMEARZ \
-                                                $file \
-                                                $OUTPUT_DIR \
-                                                $VMAP_PATH
+  python data_scripts/make_larnd_voxels.py --batch_mode \
+                                           --smear_z $SMEARZ \
+                                           $file \
+                                           $OUTPUT_DIR \
+                                           $VMAP_PATH
 done
 
