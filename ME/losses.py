@@ -4,7 +4,7 @@ from collections import namedtuple
 import MinkowskiEngine as ME
 import torch; import torch.nn as nn; from torch.nn.utils.rnn import pad_sequence
 from chamfer_distance import ChamferDistance
-from .soft_dtw_cuda_myfork import SoftDTW
+from ME.soft_dtw_cuda_myfork import SoftDTW
 
 def init_loss_func(conf):
     if (
@@ -1004,4 +1004,81 @@ class InfillSoftDTW(CustomLoss):
             coords[:, gap_idx] == gap_coord for gap_coord in range(gap_start, gap_end + 1)
         )
         return coords[gap_mask.type(torch.bool)]
+
+# Testing mess
+if __name__ == "__main__":
+    """Testing using conv layers to smear"""
+    from ME.config_parsers.parser_train import get_config
+    from ME.dataset import LarndDataset, CollateCOO
+    from ME.models.completion_net_adversarial import CompletionNetAdversarial
+
+    conf = get_config(
+        "/home/awilkins/larnd_infill/larnd_infill/"
+        "experiments/gps_single_muon_zdownsample10/exptest.yml"
+    )
+    model = CompletionNetAdversarial(conf)
+    collate_fn = CollateCOO(
+        coord_feat_pairs=(("input_coords", "input_feats"), ("target_coords", "target_feats"))
+    )
+    dataset= LarndDataset(
+        conf.train_data_path,
+        conf.data_prep_type,
+        conf.vmap,
+        conf.n_feats_in, conf.n_feats_out,
+        conf.scalefactors,
+        conf.xyz_smear_infill, conf.xyz_smear_active,
+        max_dataset_size=20,
+        seed=1
+    )
+    dataloader = torch.utils.data.DataLoader(
+        dataset, batch_size=2, collate_fn=collate_fn, num_workers=0, shuffle=False
+    )
+
+    for data in dataloader:
+        model.set_input(data)
+        model.optimize_parameters()
+        vis = model.get_current_visuals()
+        s_pred, s_in, s_target = vis["s_pred"], vis["s_in"], vis["s_target"]
+
+        s_in_infill_mask = s_in.F[:, -1] == 1
+        infill_coords = s_in.C[s_in_infill_mask]
+        infill_feats_target = s_target.features_at_coordinates(infill_coords.type(torch.float))
+        infill_coords_true_nonzero_mask = (
+            s_target.features_at_coordinates(infill_coords.type(torch.float))[:, 0] != 0
+        )
+        infill_coords_true_nonzero = infill_coords[infill_coords_true_nonzero_mask]
+        s_target_infill = ME.SparseTensor(
+            coordinates=infill_coords, features=infill_feats_target, device=model.device
+        )
+        conv = ME.MinkowskiConvolution(1, 1, kernel_size=40, dimension=3)
+        # NOTE Odd kernel sizes are much better for smearing.
+        # See https://nvidia.github.io/MinkowskiEngine/convolution.html for how the kernel differs
+        # for even/odd. Odd anchors the kernel centre to the pixel while even anchors
+        # the kernel corner, so the smearing will never reach some regions of pixel space.
+        with torch.no_grad():
+            conv.kernel[:, :, :] = 1
+        conv.to(model.device)
+        with torch.no_grad():
+            s_target_infill_smear = conv(s_target_infill)
+        print(infill_coords.shape)
+        print(s_target_infill_smear.F.shape)
+        print(s_target_infill_smear.F.sum())
+        print("---")
+        infill_coords_true_smear_nonzero_mask = (
+            s_target_infill_smear.features_at_coordinates(infill_coords.type(torch.float))[:, 0] != 0
+        )
+        infill_coords_true_smear_nonzero = infill_coords[infill_coords_true_smear_nonzero_mask]
+        infill_coords_batch = infill_coords[infill_coords[:, 0] == 0]
+        infill_coords_true_nonzero_batch = infill_coords_true_nonzero[infill_coords_true_nonzero[:, 0] == 0]
+        infill_coords_true_smear_nonzero_batch = infill_coords_true_smear_nonzero[infill_coords_true_smear_nonzero[:, 0] == 0]
+        print(infill_coords_batch.shape)
+        print(infill_coords_true_nonzero_batch.shape)
+        print(infill_coords_true_smear_nonzero_batch.shape)
+        # print(infill_coords_true_nonzero_batch.sort(0)[0])
+        # print(infill_coords_true_smear_nonzero_batch.sort(0)[0][:200])
+        import sys; sys.exit()
+
+
+
+
 
