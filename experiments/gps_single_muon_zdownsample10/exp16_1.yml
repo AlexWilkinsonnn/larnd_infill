@@ -4,7 +4,7 @@ pixel_layout: "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_t
 device: "cuda:0"
 max_num_worders: 4
 
-checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/dummy_edep_zdownsample10"
+checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/gps_single_muon_zdownsample10"
 name: "exp16_1"
 train_script: "train_sigmask_adversarial"
 
