@@ -28,6 +28,8 @@ def init_loss_func(conf):
         )
     elif conf.loss_func == "SoftDTW":
         loss = InfillSoftDTW(conf)
+    elif conf.loss_func == "PixelWiseSmear_L1Loss" or conf.loss_func == "PixelWiseSmear_MSELoss":
+        loss = PixelWiseSmear(conf)
     else:
         raise ValueError("loss_func={} not valid".format(conf.loss_func))
 
@@ -1005,6 +1007,153 @@ class InfillSoftDTW(CustomLoss):
         )
         return coords[gap_mask.type(torch.bool)]
 
+
+class PixelWiseSmear(CustomLoss):
+    def __init__(self, conf, override_opts={}):
+        if override_opts:
+            conf_dict = conf._asdict()
+            for opt_name, opt_val in override_opts.items():
+                conf_dict[opt_name] = opt_val
+            conf_namedtuple = namedtuple("config", conf_dict)
+            conf = conf_namedtuple(**conf_dict)
+
+        if conf.loss_func == "PixelWiseSmear_L1Loss":
+            self.crit = nn.L1Loss()
+            self.crit_sumreduction = nn.L1Loss(reduction="sum")
+        elif conf.loss_func == "PixelWiseSmear_MSELoss":
+            self.crit = nn.MSELoss()
+            self.crit_sumreduction = nn.MSELoss(reduction="sum")
+        else:
+            raise NotImplementedError("loss_func={} not valid".format(conf.loss_func))
+
+        self.lambda_loss_infillsmear_zero = getattr(conf, "loss_infillsmear_zero_weight", 0.0)
+        self.lambda_loss_infillsmear_nonzero = getattr(conf, "loss_infillsmear_nonzero_weight", 0.0)
+        self.lambda_loss_infill = getattr(conf, "loss_infill_weight", 0.0)
+        self.lambda_loss_active = getattr(conf, "loss_active_weight", 0.0)
+        assert self.lambda_loss_infillsmear_zero or self.lambda_loss_infillsmear_nonzero, (
+            "Use PixelWise loss if not making use of smearing"
+        )
+
+        self.device = torch.device(conf.device)
+        ker_xy_size = getattr(conf, "loss_smear_ker_xy_size", 3)
+        ker_z_size = getattr(conf, "loss_smear_ker_z_size", 9)
+        assert ker_xy_size % 2, (
+            f"Smearing kernel size 'loss_smear_ker_xy_size={ker_xy_size}' should be odd"
+        )
+        assert ker_z_size % 2, (
+            f"Smearing kernel size 'loss_smear_ker_z_size={ker_z_size}' should be odd"
+        )
+        self.smear_conv = ME.MinkowskiConvolution(
+            1, 1, kernel_size=[ker_xy_size, ker_xy_size, ker_z_size], dimension=3
+        )
+        torch.nn.init.constant_(self.smear_conv.kernel, 1.0)
+        self.smear_conv.to(self.device)
+
+    def get_names_scalefactors(self):
+        return {
+            "infillsmear_zero" : self.lambda_loss_infillsmear_zero,
+            "infillsmear_nonzero" : self.lambda_loss_infillsmear_nonzero,
+            "infill" : self.lambda_loss_infill,
+            "active" : self.lambda_loss_active
+        }
+
+    def calc_loss(self, s_pred, s_in, s_target, data):
+        batch_size = len(data["mask_x"])
+
+        infill_coords, active_coords = self._get_infill_active_coords(s_in, s_target)
+
+        losses_infill, losses_active = [], []
+        losses_infillsmear_zero, losses_infillsmear_nonzero = [], []
+
+        infill_feats_target = s_target.features_at_coordinates(infill_coords)
+        s_target_infill = ME.SparseTensor(
+            coordinates=infill_coords, features=infill_feats_target, device=self.device
+        )
+        with torch.no_grad():
+            s_target_infill_smear = self.smear_conv(s_target_infill)
+        infill_coords_target_smear_zero_mask = (
+            s_target_infill_smear.features_at_coordinates(infill_coords)[:, 0] == 0
+        )
+        infill_coords_target_smear_zero = infill_coords[infill_coords_target_smear_zero_mask]
+        infill_coords_target_smear_nonzero = infill_coords[~infill_coords_target_smear_zero_mask]
+
+        # Compute loss separately for each image and then average over batch
+        for i_batch in range(batch_size):
+            if self.lambda_loss_infill:
+                coords = infill_coords[infill_coords[:, 0] == i_batch]
+                losses_infill.append(self._get_loss_at_coords(s_pred, s_target, coords))
+
+            if self.lambda_loss_active:
+                coords = active_coords[active_coords[:, 0] == i_batch]
+                losses_active.append(self._get_loss_at_coords(s_pred, s_target, coords))
+
+            if self.lambda_loss_infillsmear_zero:
+                mask = infill_coords_target_smear_zero[:, 0] == i_batch
+                coords = infill_coords_target_smear_zero[mask]
+                losses_infillsmear_zero.append(self._get_loss_at_coords(s_pred, s_target, coords))
+
+            if self.lambda_loss_infillsmear_nonzero:
+                mask = infill_coords_target_smear_nonzero[:, 0] == i_batch
+                coords = infill_coords_target_smear_nonzero[mask]
+                losses_infillsmear_nonzero.append(self._get_loss_at_coords(s_pred, s_target, coords))
+
+        loss_tot = 0.0
+        losses = {}
+        if self.lambda_loss_infill:
+            loss = sum(losses_infill) / batch_size
+            loss_tot += self.lambda_loss_infill * loss
+            losses["infill"] = loss
+        if self.lambda_loss_active:
+            loss = sum(losses_active) / batch_size
+            loss_tot += self.lambda_loss_active * loss
+            losses["active"] = loss
+        if self.lambda_loss_infillsmear_zero:
+            loss = sum(losses_infillsmear_zero) / batch_size
+            loss_tot += self.lambda_loss_infillsmear_zero * loss
+            losses["infillsmear_zero"] = loss
+        if self.lambda_loss_infillsmear_nonzero:
+            loss = sum(losses_infillsmear_nonzero) / batch_size
+            loss_tot += self.lambda_loss_infillsmear_nonzero * loss
+            losses["infillsmear_nonzero"] = loss
+
+        return loss_tot, losses
+
+    def _get_infill_active_coords(self, s_in, s_target):
+        s_in_infill_mask = s_in.F[:, -1] == 1
+        infill_coords = s_in.C[s_in_infill_mask].type(torch.float)
+        active_coords = s_in.C[~s_in_infill_mask].type(torch.float)
+
+        return infill_coords, active_coords
+
+    def _get_loss_at_coords(self, s_pred, s_target, coords):
+        if coords.shape[0]:
+            loss = self.crit(
+                s_pred.features_at_coordinates(coords).squeeze(),
+                s_target.features_at_coordinates(coords).squeeze()
+            )
+        else:
+            loss = self.crit_sumreduction(
+                s_pred.features_at_coordinates(coords).squeeze(),
+                s_target.features_at_coordinates(coords).squeeze()
+            )
+
+        return loss
+
+    def _get_summed_loss_at_coords(self, s_pred, s_target, coords):
+        if coords.shape[0]:
+            # The denominator bounds the loss [0,1] since voxels are bounded [0,1] by the hardtanh
+            loss = self.crit(
+                s_pred.features_at_coordinates(coords).squeeze().sum() / coords.shape[0],
+                s_target.features_at_coordinates(coords).squeeze().sum() / coords.shape[0]
+            )
+        else:
+            loss = self.crit_sumreduction(
+                s_pred.features_at_coordinates(coords).squeeze().sum(),
+                s_target.features_at_coordinates(coords).squeeze().sum()
+            )
+
+        return loss
+
 # Testing mess
 if __name__ == "__main__":
     """Testing using conv layers to smear"""
@@ -1050,13 +1199,12 @@ if __name__ == "__main__":
         s_target_infill = ME.SparseTensor(
             coordinates=infill_coords, features=infill_feats_target, device=model.device
         )
-        conv = ME.MinkowskiConvolution(1, 1, kernel_size=40, dimension=3)
+        conv = ME.MinkowskiConvolution(1, 1, kernel_size=[3,3,9], dimension=3)
         # NOTE Odd kernel sizes are much better for smearing.
         # See https://nvidia.github.io/MinkowskiEngine/convolution.html for how the kernel differs
         # for even/odd. Odd anchors the kernel centre to the pixel while even anchors
         # the kernel corner, so the smearing will never reach some regions of pixel space.
-        with torch.no_grad():
-            conv.kernel[:, :, :] = 1
+        torch.nn.init.constant_(conv.kernel, 1)
         conv.to(model.device)
         with torch.no_grad():
             s_target_infill_smear = conv(s_target_infill)
@@ -1076,9 +1224,4 @@ if __name__ == "__main__":
         print(infill_coords_true_smear_nonzero_batch.shape)
         # print(infill_coords_true_nonzero_batch.sort(0)[0])
         # print(infill_coords_true_smear_nonzero_batch.sort(0)[0][:200])
-        import sys; sys.exit()
-
-
-
-
 
