@@ -1028,6 +1028,7 @@ class PixelWiseSmear(CustomLoss):
 
         self.lambda_loss_infillsmear_zero = getattr(conf, "loss_infillsmear_zero_weight", 0.0)
         self.lambda_loss_infillsmear_nonzero = getattr(conf, "loss_infillsmear_nonzero_weight", 0.0)
+        self.lambda_loss_infillsmear_sum = getattr(conf, "loss_infillsmear_sum_weight", 0.0)
         self.lambda_loss_infill = getattr(conf, "loss_infill_weight", 0.0)
         self.lambda_loss_active = getattr(conf, "loss_active_weight", 0.0)
         assert self.lambda_loss_infillsmear_zero or self.lambda_loss_infillsmear_nonzero, (
@@ -1053,6 +1054,7 @@ class PixelWiseSmear(CustomLoss):
         return {
             "infillsmear_zero" : self.lambda_loss_infillsmear_zero,
             "infillsmear_nonzero" : self.lambda_loss_infillsmear_nonzero,
+            "infillsmear_sum" : self.lambda_loss_infillsmear_sum,
             "infill" : self.lambda_loss_infill,
             "active" : self.lambda_loss_active
         }
@@ -1060,10 +1062,11 @@ class PixelWiseSmear(CustomLoss):
     def calc_loss(self, s_pred, s_in, s_target, data):
         batch_size = len(data["mask_x"])
 
-        infill_coords, active_coords = self._get_infill_active_coords(s_in, s_target)
+        infill_coords, active_coords = self._get_infill_active_coords(s_in)
 
         losses_infill, losses_active = [], []
         losses_infillsmear_zero, losses_infillsmear_nonzero = [], []
+        losses_infillsmear_sum = []
 
         infill_feats_target = s_target.features_at_coordinates(infill_coords)
         s_target_infill = ME.SparseTensor(
@@ -1092,10 +1095,17 @@ class PixelWiseSmear(CustomLoss):
                 coords = infill_coords_target_smear_zero[mask]
                 losses_infillsmear_zero.append(self._get_loss_at_coords(s_pred, s_target, coords))
 
-            if self.lambda_loss_infillsmear_nonzero:
+            if self.lambda_loss_infillsmear_nonzero or self.lambda_loss_infillsmear_sum:
                 mask = infill_coords_target_smear_nonzero[:, 0] == i_batch
                 coords = infill_coords_target_smear_nonzero[mask]
-                losses_infillsmear_nonzero.append(self._get_loss_at_coords(s_pred, s_target, coords))
+                if self.lambda_loss_infillsmear_nonzero:
+                    losses_infillsmear_nonzero.append(
+                        self._get_loss_at_coords(s_pred, s_target, coords)
+                    )
+                if self.lambda_loss_infillsmear_sum:
+                    losses_infillsmear_sum.append(
+                        self._get_summed_loss_at_coords(s_pred, s_target, coords)
+                    )
 
         loss_tot = 0.0
         losses = {}
@@ -1115,10 +1125,14 @@ class PixelWiseSmear(CustomLoss):
             loss = sum(losses_infillsmear_nonzero) / batch_size
             loss_tot += self.lambda_loss_infillsmear_nonzero * loss
             losses["infillsmear_nonzero"] = loss
+        if self.lambda_loss_infillsmear_sum:
+            loss = sum(losses_infillsmear_sum) / batch_size
+            loss_tot += self.lambda_loss_infillsmear_sum * loss
+            losses["infillsmear_sum"] = loss
 
         return loss_tot, losses
 
-    def _get_infill_active_coords(self, s_in, s_target):
+    def _get_infill_active_coords(self, s_in):
         s_in_infill_mask = s_in.F[:, -1] == 1
         infill_coords = s_in.C[s_in_infill_mask].type(torch.float)
         active_coords = s_in.C[~s_in_infill_mask].type(torch.float)

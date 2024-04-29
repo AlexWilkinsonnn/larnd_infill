@@ -56,7 +56,8 @@ epochs: 200
 lr_decay_iter: 5000
 loss_infill_weight: 0.0
 loss_active_weight: 0.0
-loss_infillsmear_zero_weight: 10.0
+loss_infillsmear_zero_weight: 1.0
 loss_infillsmear_nonzero_weight: 1.0
+loss_infillsmear_sum_weight: 1.0
 loss_GAN_weight: 0.00
 
