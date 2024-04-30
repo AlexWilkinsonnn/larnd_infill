@@ -1,9 +1,11 @@
 """
 Load larnd-sim data from h5 file and run trained infill model on it.
-- Load packets prepare as voxel data
+- Load packets, prepare as voxel data
 - Pass to dataloader to make infill mask
 - Apply infill network
 - Map back to unvoxelised 3d positions, keeping the non-infilled packets unchanged
+NOTE: The zshifting is applied here before the infill step. So it should be be applied again
+when loading into larsoft
 """
 import argparse, os
 import datetime
