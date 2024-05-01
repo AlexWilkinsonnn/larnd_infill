@@ -6,8 +6,8 @@ import numpy as np
 from tqdm import tqdm
 
 INFILL_VTXINGAP = 0
-INFILL_HADEFRACINGAP_MAX = 0.1
-INFILL_LEPEFRACINGAP_MAX = 0.1
+INFILL_HADEFRACINGAP_MAX = 0.2
+INFILL_LEPEFRACINGAP_MAX = 0.2
 
 def main(args):
     with open(args.vmap, "r") as f:
