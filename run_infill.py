@@ -16,8 +16,6 @@ import numpy as np
 
 import torch
 
-from larpixsoft.funcs import get_events_no_cuts
-
 from ME.config_parsers.parser_eval import get_config
 from ME.dataset import LarndDataset, CollateCOO
 from ME.models.completion_net_adversarial import CompletionNetAdversarialEval
