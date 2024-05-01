@@ -133,8 +133,8 @@ def main(args, overwrite_dict):
 
 def make_voxels(conf, f, output_dir):
     """
-    Voxel sparse data from larnd-sim packets.
-    Files named using eventid of the corresponding true vertex.
+    Voxel sparse data from larnd-sim packets that have been reconstructed to 3d positions.
+    Files named using eventid.
     """
     x_bin_edges = sorted([ bin[0] for bin in conf.vmap["x"] if type(bin) == tuple ])
     x_bin_edges.append(max(bin[1] for bin in conf.vmap["x"] if type(bin) == tuple))

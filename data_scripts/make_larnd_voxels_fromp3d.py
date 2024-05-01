@@ -5,56 +5,42 @@ import sparse, h5py, yaml
 import numpy as np
 from tqdm import tqdm
 
-from larpixsoft.detector import set_detector_properties
-from larpixsoft.geometry import get_geom_map
-from larpixsoft.funcs import get_events_no_cuts
-
-from aux import plot_ndlar_voxels_2
-
-DET_PROPS = "/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
-PIXEL_LAYOUT = (
-    "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
-)
+INFILL_VTXINGAP = 0
+INFILL_HADEFRACINGAP_MAX = 0.1
+INFILL_LEPEFRACINGAP_MAX = 0.1
 
 def main(args):
-    detector = set_detector_properties(DET_PROPS, PIXEL_LAYOUT, pedestal=74)
-    geometry = get_geom_map(PIXEL_LAYOUT)
-
     with open(args.vmap, "r") as f:
         vmap = yaml.load(f, Loader=yaml.FullLoader)
 
-    assertion = detector.vdrift == vmap["vdrift"]
-    assert assertion, "vdrift mismatch {} and {}".format(detector.vdrift, vmap["vdrift"])
-    assertion = detector.pixel_pitch == vmap["pixel_pitch"]
-    message = "pixel_pitch mismatch {} and {}".format(detector.pixel_pitch, vmap["pixel_pitch"])
-    assert assertion, message
-
     f = h5py.File(args.input_file, "r")
 
+    if args.infillinfo_cuts:
+        cut_event_ids = get_infill_cut_eventids(f)
+        print(f"Cutting {len(cut_event_ids)} from file")
+    else:
+        cut_event_ids = set()
+
     make_voxels(
-        detector,
-        geometry,
+        f,
         vmap,
-        f["packets"], f["mc_packets_assn"], f["tracks"],
         args.output_dir, os.path.basename(args.input_file).split(".h5")[0],
+        cut_event_ids=cut_event_ids,
         forward_facing_anode_zshift=args.forward_facing_anode_zshift,
         backward_facing_anode_zshift=args.backward_facing_anode_zshift,
         check_z_local=True,
-        smear_z=args.smear_z,
-        plot_only=args.plot_only,
+        smear_z=args.smear_z
     )
 
 def make_voxels(
-    detector,
-    geometry,
+    f,
     vmap,
-    raw_packets, raw_mc_packets_assn, raw_tracks,
     output_dir, output_prefix,
+    cut_event_ids=set(),
     forward_facing_anode_zshift=0.0,
     backward_facing_anode_zshift=0.0,
     check_z_local=False,
-    smear_z=1,
-    plot_only=False
+    smear_z=1
 ):
     x_bin_edges = sorted([ bin[0] for bin in vmap["x"] if type(bin) == tuple ])
     x_bin_edges.append(max(bin[1] for bin in vmap["x"] if type(bin) == tuple))
@@ -66,52 +52,45 @@ def make_voxels(
     z_bin_edges.append(max(bin[1] for bin in vmap["z"] if type(bin) == tuple))
     z_bin_edges = np.array(z_bin_edges)
 
-    packets = get_events_no_cuts(
-        raw_packets, raw_mc_packets_assn, raw_tracks, geometry, detector, no_tracks=True
-    )
-    tracks=None
-    # packets, tracks = get_events_no_cuts(
-    #     f['packets'], f['mc_packets_assn'], f['tracks'], geometry, detector, no_tracks=False
-    # )
+    for event_id in np.unique(f["3d_packets"]["eventID"]):
+        if event_id in cut_event_ids:
+            continue
 
-    for i_ev, event_packets in enumerate(packets):
         voxel_data = {}
-        for p in event_packets:
-            if p.timestamp < p.t_0:
-                raise Exception("p.timestamp < p.t_0. {} and {}".format(p.timestamp, p.t_0))
+        for p3d in f["3d_packets"][f["3d_packets"]["eventID"] == event_id]:
+            if check_z_local and p3d["z_module"] >= 50.4:
+                print(
+                    "!!!p.z_module = {} (>=50.4) (forward_facing_anode={}, adc={})!!!".format(
+                        p3d["z_module"], p3d["forward_facing_anode"], p3d["adc"]
+                    )
+                )
+                continue
 
-            # This still happens rarely.
-            # Accounting for time of interaction with LAr (~0.3us max) and diffusion (~0.02cm max)
-            # does not explain some of the p.z() seen.
-            # Don't understand but ignoring as for most events there are none.
-            if p.z() >= 50.4:
-                print("p.z() = {}".format(p.z()))
-                if check_z_local:
-                    continue
-
-            if p.io_group in [1, 2]: # means anode faces positive z direction just because it does
-                z = p.z_global(centre=True) + forward_facing_anode_zshift
+            if p3d["forward_facing_anode"]:
+                z = p3d["z"] + forward_facing_anode_zshift
             else:
-                z = p.z_global(centre=True) + backward_facing_anode_zshift
+                z = p3d["z"] + backward_facing_anode_zshift
 
-            coord_x = np.histogram([p.x + p.anode.tpc_x], bins=x_bin_edges)[0].nonzero()[0][0]
-            coord_y = np.histogram([p.y + p.anode.tpc_y], bins=y_bin_edges)[0].nonzero()[0][0]
+            coord_x = np.histogram([p3d["x"]], bins=x_bin_edges)[0].nonzero()[0][0]
+            coord_y = np.histogram([p3d["y"]], bins=y_bin_edges)[0].nonzero()[0][0]
             coord_z = np.histogram([z], bins=z_bin_edges)[0].nonzero()[0][0]
 
-            if p.io_group in [1, 2]:
+            if p3d["forward_facing_anode"]:
                 smear_z = min(smear_z, vmap["n_voxels"]["z"] - coord_z)
             else:
                 smear_z = min(smear_z, coord_z + 1)
 
             for shift in range(smear_z):
-                coord = (coord_x, coord_y, coord_z + (shift if p.io_group in [1, 2] else -shift))
+                coord = (
+                    coord_x, coord_y, coord_z + (shift if p3d["forward_facing_anode"] else -shift)
+                )
 
                 if coord not in voxel_data:
                     voxel_data[coord] = {}
-                    voxel_data[coord]["tot_adc"] = p.ADC / smear_z
+                    voxel_data[coord]["tot_adc"] = p3d["adc"] / smear_z
                     voxel_data[coord]["tot_packets"] = 1
                 else:
-                    voxel_data[coord]["tot_adc"] += p.ADC / smear_z
+                    voxel_data[coord]["tot_adc"] += p3d["adc"] / smear_z
                     voxel_data[coord]["tot_packets"] += 1
 
         coords = [[], [], [], []]
@@ -123,36 +102,20 @@ def make_voxels(
                 coords[3].append(i_feat)
                 feats.append(data[feat_name])
 
-        if plot_only:
-            print(i_ev)
-            plot_ndlar_voxels_2(
-                [
-                    [ coord for coord, coord_feat in zip(coords[i], coords[3]) if coord_feat == 0 ]
-                    for i in range(3)
-                ],
-                [ feat for feat, coord_feat in zip(feats, coords[3]) if coord_feat == 0 ],
-                detector, vmap["x"], vmap["y"], vmap["z"], vmap["x_gaps"], vmap["z_gaps"],
-                z_scalefactor=1, max_feat=150, tracks=tracks
-            )
-            # plot_ndlar_voxels_2(
-            #     [
-            #         [ coord for coord, coord_feat in zip(coords[i], coords[3]) if coord_feat == 1 ]
-            #         for i in range(3)
-            #     ],
-            #     [ feat for feat, coord_feat in zip(feats, coords[3]) if coord_feat == 1 ],
-            #     detector, vmap["x"], vmap["y"], vmap["z"],
-            #     z_scalefactor=1, max_feat=5, tracks=tracks
-            # )
-            continue
-
         s_voxelised = sparse.COO(
             coords, feats,
             shape=(x_bin_edges.size - 1, y_bin_edges.size - 1, z_bin_edges.size - 1, 2)
         )
 
         sparse.save_npz(
-            os.path.join(output_dir, output_prefix + "_ev{}.npz".format(i_ev)), s_voxelised
+            os.path.join(output_dir, output_prefix + "{}.npz".format(event_id)), s_voxelised
         )
+
+def get_infill_cut_eventids(f):
+    mask = (f["nd_paramreco"]["vtxInGap"] == INFILL_VTXINGAP)
+    mask = mask & (f["nd_paramreco"]["hadEFracInGap"] < INFILL_HADEFRACINGAP_MAX)
+    mask = mask & (f["nd_paramreco"]["lepEFracInGap"] < INFILL_LEPEFRACINGAP_MAX)
+    return set(f["nd_paramreco"][~mask]["eventID"])
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -182,6 +145,10 @@ def parse_arguments():
     parser.add_argument(
         "--backward_facing_anode_zshift", type=float, default=0.0,
         help="z shift to apply to all packets from a negative z facing anode (recommend -0.38cm)"
+    )
+    parser.add_argument(
+        "--infillinfo_cuts", action="store_true",
+        help="Apply hardcoded cuts based on infill info stored in nd_paramreco"
     )
 
     args = parser.parse_args()
