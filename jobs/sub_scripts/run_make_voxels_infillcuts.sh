@@ -1,10 +1,9 @@
 #!/bin/bash
 #SBATCH -p RCIF
 #SBATCH -N1
-#SBATCH -c4
+#SBATCH -c2
 #SBATCH -J make_larnd_voxelmaps
 #SBATCH --array 1-10
-#SBATCH --mem=10000
 #SBATCH --error=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/err/job.%x.%j.err
 #SBATCH --output=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/out/job.%x.%j.out
 
