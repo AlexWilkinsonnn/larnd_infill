@@ -7,7 +7,7 @@ Load larnd-sim data from h5 file and run trained infill model on it.
 NOTE: The zshifting is applied here before the infill step. So it should be be applied again
 when loading into larsoft
 """
-import argparse, os
+import argparse, os, shutil
 import datetime
 
 import h5py, sparse
@@ -39,8 +39,10 @@ def main(args, overwrite_dict):
     voxels_dir = os.path.join(
         conf.cache_dir, datetime.datetime.now().strftime("%y-%m-%d_%H_%M_%S")
     )
+    print("Disk cache for voxel data is {}".format(voxels_dir))
     if not os.path.exists(voxels_dir):
         os.makedirs(voxels_dir)
+    print("Making voxels...")
     make_voxels(conf, in_f, voxels_dir)
 
     model = CompletionNetAdversarialEval(conf)
@@ -128,6 +130,9 @@ def main(args, overwrite_dict):
         packets_3d_infill = np.concatenate(packets_3d_infill_list, axis=0)
         out_f["3d_packets_infilled"].resize((len(packets_3d_infill),))
         out_f["3d_packets_infilled"][:] = packets_3d_infill
+
+    print("Removing cache dir {}".format(voxels_dir))
+    shutil.rmtree(voxels_dir)
 
 def make_voxels(conf, f, output_dir):
     """
