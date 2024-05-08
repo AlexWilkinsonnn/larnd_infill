@@ -20,16 +20,6 @@ from ME.config_parsers.parser_eval import get_config
 from ME.dataset import LarndDataset, CollateCOO
 from ME.models.completion_net_adversarial import CompletionNetAdversarialEval
 
-PACKETS_3D_INFILL_DTYPE = np.dtype(
-    [
-        ("eventID", "u4"),
-        ("adc", "f4"),
-        ("x", "f4"), ("x_module", "f4"), ("y", "f4"), ("z", "f4"), ("z_module", "f4"),
-        ("forward_facing_anode", "u4"),
-        ("infilled", "u4")
-    ]
-)
-
 def main(args, overwrite_dict):
     conf = get_config(args.config, overwrite_dict=overwrite_dict)
 
@@ -68,9 +58,8 @@ def main(args, overwrite_dict):
         for key in in_f.keys():
             data = np.array(in_f[key])
             out_f.create_dataset(key, data=data)
-        out_f.create_dataset(
-            "3d_packets_infilled", (0,), dtype=PACKETS_3D_INFILL_DTYPE, maxshape=(None,)
-        )
+        p3d_infill_dtype = in_f["3d_packets"].dtype
+        out_f.create_dataset("3d_packets_infilled", (0,), dtype=p3d_infill_dtype, maxshape=(None,))
 
         packets_3d_infill_list = []
 
@@ -96,18 +85,10 @@ def main(args, overwrite_dict):
                 infill_feats_b = infill_feats_b / conf.scalefactors[0]
 
                 packets_3d_infill_ev = np.empty(
-                    len(orig_p3d) + len(infill_coords_b), dtype=PACKETS_3D_INFILL_DTYPE
+                    len(orig_p3d) + len(infill_coords_b), dtype=p3d_infill_dtype
                 )
                 for i_p, p3d in enumerate(orig_p3d):
-                    packets_3d_infill_ev[i_p]["eventID"] = event_id
-                    packets_3d_infill_ev[i_p]["adc"] = p3d["adc"]
-                    packets_3d_infill_ev[i_p]["x"] = p3d["x"]
-                    packets_3d_infill_ev[i_p]["x_module"] = p3d["x_module"]
-                    packets_3d_infill_ev[i_p]["y"] = p3d["y"]
-                    packets_3d_infill_ev[i_p]["z"] = p3d["z"]
-                    packets_3d_infill_ev[i_p]["z_module"] = p3d["z_module"]
-                    packets_3d_infill_ev[i_p]["forward_facing_anode"] = p3d["forward_facing_anode"]
-                    packets_3d_infill_ev[i_p]["infilled"] = 0
+                    packets_3d_infill_ev[i_p] = p3d
                 for i_p, (coord, feat) in enumerate(zip(infill_coords_b, infill_feats_b)):
                     x_l_h = conf.vmap["x"][coord[1].item()]
                     x = (x_l_h[0] + x_l_h[1]) / 2
