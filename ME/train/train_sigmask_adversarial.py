@@ -422,7 +422,8 @@ def get_loss_str(losses_acc, loss_scalefactors):
 
 def plot_pred(
     s_pred, s_in, s_target, data, vmap, scalefactors, save_name_prefix, detector,
-    max_evs=2, save_dir="test/", save_tensors=False, skip_target=False, skip_predonly=False
+    max_evs=2, save_dir="test/", save_tensors=False, skip_target=False, skip_predonly=False,
+    adc_threshold=4
 ):
     for i_batch, (
         coords_pred, feats_pred, coords_target, feats_target, coords_in, feats_in
@@ -450,6 +451,8 @@ def plot_pred(
         coords_target_packed, feats_list_target = [[], [], []], []
 
         for coord, feat in zip(coords_pred, feats_pred):
+            if feat < adc_threshold:
+                continue
             if coord[0].item() in batch_mask_x or coord[2].item() in batch_mask_z:
                 coords_packed[0].append(coord[0].item())
                 coords_packed[1].append(coord[1].item())
@@ -460,6 +463,8 @@ def plot_pred(
             coords_packed_predonly[2].append(coord[2].item())
             feats_list_predonly.append(int(feat.item()))
         for coord, feat in zip(coords_target, feats_target):
+            if feat < adc_threshold:
+                continue
             coords_target_packed[0].append(coord[0].item())
             coords_target_packed[1].append(coord[1].item())
             coords_target_packed[2].append(coord[2].item())
