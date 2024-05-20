@@ -39,7 +39,7 @@ elif [[ "$MODE" == 2 ]]; then
   python data_scripts/make_larnd_voxels_fromp3d.py --batch_mode \
                                                    --forward_facing_anode_zshift 0.38 \
                                                    --backward_facing_anode_zshift -0.38 \
-                                                   --no_adc
+                                                   --no_adc \
                                                    $input_file \
                                                    $OUTPUT_DIR \
                                                    $VMAP_PATH
