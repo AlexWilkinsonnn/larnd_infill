@@ -29,7 +29,8 @@ def main(args):
         forward_facing_anode_zshift=args.forward_facing_anode_zshift,
         backward_facing_anode_zshift=args.backward_facing_anode_zshift,
         check_z_local=True,
-        smear_z=args.smear_z
+        smear_z=args.smear_z,
+        no_adc=args.no_adc
     )
 
 def make_voxels(
@@ -40,7 +41,8 @@ def make_voxels(
     forward_facing_anode_zshift=0.0,
     backward_facing_anode_zshift=0.0,
     check_z_local=False,
-    smear_z=1
+    smear_z=1,
+    no_adc=False
 ):
     x_bin_edges = sorted([ bin[0] for bin in vmap["x"] if type(bin) == tuple ])
     x_bin_edges.append(max(bin[1] for bin in vmap["x"] if type(bin) == tuple))
@@ -102,6 +104,10 @@ def make_voxels(
                 coords[3].append(i_feat)
                 feats.append(data[feat_name])
 
+        if no_adc:
+            coords[3] = [ 0 for _ in coords[3] ]
+            feats = [ 1 for _ in feats ]
+
         s_voxelised = sparse.COO(
             coords, feats,
             shape=(x_bin_edges.size - 1, y_bin_edges.size - 1, z_bin_edges.size - 1, 2)
@@ -149,6 +155,10 @@ def parse_arguments():
     parser.add_argument(
         "--infillinfo_cuts", action="store_true",
         help="Apply hardcoded cuts based on infill info stored in nd_paramreco"
+    )
+    parser.add_argument(
+        "--no_adc", action="store_true",
+        help="Voxels will all have value 1, value of adc is ignored"
     )
 
     args = parser.parse_args()

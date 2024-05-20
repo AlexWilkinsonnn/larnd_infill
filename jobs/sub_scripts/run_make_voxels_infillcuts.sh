@@ -18,7 +18,7 @@ echo "Running on ${SLURM_JOB_NODELIST}"
 echo "input dir is ${INPUT_DIR}"
 echo "output dir is ${OUTPUT_DIR}"
 echo "voxel map is ${VMAP_PATH}"
-echo "mode is ${MODE} (1: --forward_facing_anode_zshift 0.38 --backward_facing_anode_zshift -0.38 --infillinfo_cuts)"
+echo "mode is ${MODE} (1: --forward_facing_anode_zshift 0.38 --backward_facing_anode_zshift -0.38 --infillinfo_cuts 2: MODE 1 w/ --no_adc)"
 
 input_name=$(ls $INPUT_DIR | head -n $SLURM_ARRAY_TASK_ID | tail -n -1)
 input_file=${INPUT_DIR}/${input_name}
@@ -32,6 +32,14 @@ if [[ "$MODE" == 1 ]]; then
   python data_scripts/make_larnd_voxels_fromp3d.py --batch_mode \
                                                    --forward_facing_anode_zshift 0.38 \
                                                    --backward_facing_anode_zshift -0.38 \
+                                                   $input_file \
+                                                   $OUTPUT_DIR \
+                                                   $VMAP_PATH
+elif [[ "$MODE" == 2 ]]; then
+  python data_scripts/make_larnd_voxels_fromp3d.py --batch_mode \
+                                                   --forward_facing_anode_zshift 0.38 \
+                                                   --backward_facing_anode_zshift -0.38 \
+                                                   --no_adc
                                                    $input_file \
                                                    $OUTPUT_DIR \
                                                    $VMAP_PATH
