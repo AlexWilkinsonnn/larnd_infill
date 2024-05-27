@@ -2,7 +2,7 @@ det_props: "/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndla
 pixel_layout: "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
 
 device: "cuda:0"
-max_num_workers: 4
+max_num_workers: 8
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/gps_multi_muon_zdownsample10"
 name: "exp39_1_refine"
