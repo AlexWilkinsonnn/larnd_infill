@@ -35,7 +35,9 @@ defaults = {
     "save_model" : "never",
     "load_G" : "",
     "load_D" : "",
-    "refresh_masks_epoch": 1
+    "refresh_masks_epoch" : 1,
+    "conf_refining_from" : "",
+    "weights_refining_from" : ""
 }
 
 mandatory_fields = {
@@ -149,6 +151,12 @@ def get_config(conf_file, overwrite_dict={}, prep_checkpoint_dir=True):
         )
         if not os.path.exists(os.path.join(conf_dict["checkpoint_dir"], "preds")):
             os.makedirs(os.path.join(conf_dict["checkpoint_dir"], "preds"))
+
+    if conf_dict["train_script"] == "train_refine":
+        if not conf_dict["conf_refining_from"]:
+            raise ValueError("Specify 'conf_refining_from' when doing 'train_refine'")
+        if not conf_dict["weights_refining_from"]:
+            raise ValueError("Specify 'weights_refining_from' when doing 'train_refine'")
 
     conf_namedtuple = namedtuple("conf", conf_dict)
     conf = conf_namedtuple(**conf_dict)
