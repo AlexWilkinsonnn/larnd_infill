@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib; from matplotlib import pyplot as plt
 import mpl_toolkits.mplot3d.art3d as art3d
 
-
 def plot_ndlar(packets, detector, tracks=None, structures=True, projections=False):
     """Plots ND-LAr with packets from a single event and optionally tracks"""
     xy_size = detector.pixel_pitch
@@ -154,7 +153,6 @@ def plot_ndlar(packets, detector, tracks=None, structures=True, projections=Fals
 
     plt.show()
 
-
 def get_cube():
     """Get coords for plotting cuboid surface with Axes3D.plot_surface"""
     phi = np.arange(1, 10, 2) * np.pi / 4
@@ -165,7 +163,6 @@ def get_cube():
     z = np.cos(Theta) / np.sqrt(2)
 
     return x,y,z
-
 
 def plot_ndlar_voxels(
     coords, adcs, detector,
@@ -299,7 +296,6 @@ def plot_ndlar_voxels(
         ax.w_zaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))
 
     plt.show()
-
 
 def plot_ndlar_voxels_2(
     coords, feats, detector, x_vmap, y_vmap, z_vmap, x_gaps, z_gaps,

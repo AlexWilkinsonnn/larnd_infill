@@ -10,7 +10,6 @@ import MinkowskiEngine as ME
 
 from aux import plot_ndlar_voxels_2
 
-
 class LarndDataset(torch.utils.data.Dataset):
     """Dataset for reading sparse volexised larnd-sim data and preparing an infill mask"""
     def __init__(
