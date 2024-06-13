@@ -47,6 +47,7 @@ def main(args, overwrite_dict):
         conf.n_feats_in, conf.n_feats_out,
         conf.scalefactors,
         conf.xyz_smear_infill, conf.xyz_smear_active,
+        conf.xyz_max_reflect_distance,
         seed=1
     )
     dataset.set_use_true_gaps(True)

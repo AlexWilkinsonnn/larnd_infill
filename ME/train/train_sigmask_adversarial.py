@@ -64,6 +64,7 @@ def main(args):
         conf.n_feats_in, conf.n_feats_out,
         conf.scalefactors,
         conf.xyz_smear_infill, conf.xyz_smear_active,
+        conf.xyz_max_reflect_distance,
         max_dataset_size=conf.max_dataset_size
     )
     dataloader_train = torch.utils.data.DataLoader(
@@ -80,6 +81,7 @@ def main(args):
         conf.n_feats_in, conf.n_feats_out,
         conf.scalefactors,
         conf.xyz_smear_infill, conf.xyz_smear_active,
+        conf.xyz_max_reflect_distance,
         max_dataset_size=conf.max_valid_dataset_size,
         seed=1
     )

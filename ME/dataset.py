@@ -20,6 +20,7 @@ class LarndDataset(torch.utils.data.Dataset):
         n_feats_in, n_feats_out,
         feat_scalefactors,
         xyz_smear_infill, xyz_smear_active,
+        xyz_max_reflect_distance,
         valid=False,
         max_dataset_size=0,
         seed=None
@@ -49,6 +50,10 @@ class LarndDataset(torch.utils.data.Dataset):
         self.x_gap_spacing = self._calc_gap_spacing(self.x_true_gaps, vmap["n_voxels"]["x"])
         self.z_gap_size = self._calc_gap_size(self.z_true_gaps)
         self.z_gap_spacing = self._calc_gap_spacing(self.z_true_gaps, vmap["n_voxels"]["z"])
+
+        self.x_max_reflect_dist, self.y_max_reflect_dist, self.z_max_reflect_dist = (
+            xyz_max_reflect_distance
+        )
 
         if prep_type == DataPrepType.REFLECTION_NORANDOM:
             self.x_true_gap_padding = int(self.x_gap_spacing / 2 - self.x_gap_size / 2)
@@ -495,12 +500,20 @@ class LarndDataset(torch.utils.data.Dataset):
                 if reflect_x not in coordsxyz_feats:
                     continue
 
+                dist_to_reflect_x = reflect_x - coord_x
+                y_max_reflect_dist = self.y_max_reflect_dist * dist_to_reflect_x
+                z_max_reflect_dist = self.z_max_reflect_dist * dist_to_reflect_x
+
                 for coord_y, coordsz_feats in coordsxyz_feats[reflect_x].items():
                     for coord_z in coordsz_feats:
                         reflect_y, reflect_z = coord_y, coord_z
 
                         for coord_y, coordsz_feats in coordsyz_feats.items():
+                            if abs(coord_y - reflect_y) > y_max_reflect_dist:
+                                continue
                             for coord_z in coordsz_feats:
+                                if abs(coord_z - reflect_z) > z_max_reflect_dist:
+                                    continue
                                 infill_coords.add(
                                     (
                                         2 * reflect_x - coord_x,
@@ -517,12 +530,20 @@ class LarndDataset(torch.utils.data.Dataset):
                 if reflect_x not in coordsxyz_feats:
                     continue
 
+                dist_to_reflect_x = coord_x - reflect_x
+                y_max_reflect_dist = self.y_max_reflect_dist * dist_to_reflect_x
+                z_max_reflect_dist = self.z_max_reflect_dist * dist_to_reflect_x
+
                 for coord_y, coordsz_feats in coordsxyz_feats[reflect_x].items():
                     for coord_z in coordsz_feats:
                         reflect_y, reflect_z = coord_y, coord_z
 
                         for coord_y, coordsz_feats in coordsyz_feats.items():
+                            if abs(coord_y - reflect_y) > y_max_reflect_dist:
+                                continue
                             for coord_z in coordsz_feats:
+                                if abs(coord_z - reflect_z) > z_max_reflect_dist:
+                                    continue
                                 infill_coords.add(
                                     (
                                         2 * reflect_x - coord_x,
@@ -548,12 +569,20 @@ class LarndDataset(torch.utils.data.Dataset):
                     if reflect_z not in coordszxy_feats:
                         continue
 
+                    dist_to_reflect_z = reflect_z - coord_z
+                    x_max_reflect_dist = self.x_max_reflect_dist * dist_to_reflect_z
+                    y_max_reflect_dist = self.y_max_reflect_dist * dist_to_reflect_z
+
                     for coord_x, coordsy_feats in coordszxy_feats[reflect_z].items():
                         for coord_y in coordsy_feats:
                             reflect_x, reflect_y = coord_x, coord_y
 
                             for coord_x, coordsy_feats in coordsxy_feats.items():
+                                if abs(coord_x - reflect_x) > x_max_reflect_dist:
+                                    continue
                                 for coord_y in coordsy_feats:
+                                    if abs(coord_y - reflect_y) > y_max_reflect_dist:
+                                        continue
                                     infill_coords.add(
                                         (
                                             2 * reflect_x - coord_x,
@@ -571,12 +600,20 @@ class LarndDataset(torch.utils.data.Dataset):
                     if reflect_z not in coordszxy_feats:
                         continue
 
+                    dist_to_reflect_z = coord_z - reflect_z
+                    x_max_reflect_dist = self.x_max_reflect_dist * dist_to_reflect_z
+                    y_max_reflect_dist = self.y_max_reflect_dist * dist_to_reflect_z
+
                     for coord_x, coordsy_feats in coordszxy_feats[reflect_z].items():
                         for coord_y in coordsy_feats:
                             reflect_x, reflect_y = coord_x, coord_y
 
                             for coord_x, coordsy_feats in coordsxy_feats.items():
+                                if abs(coord_x - reflect_x) > x_max_reflect_dist:
+                                    continue
                                 for coord_y in coordsy_feats:
+                                    if abs(coord_y - reflect_y) > y_max_reflect_dist:
+                                        continue
                                     infill_coords.add(
                                         (
                                             2 * reflect_x - coord_x,

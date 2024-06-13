@@ -37,7 +37,8 @@ defaults = {
     "load_D" : "",
     "refresh_masks_epoch" : 1,
     "conf_refining_from" : "",
-    "weights_refining_from" : ""
+    "weights_refining_from" : "",
+    "xyz_max_reflect_distance" : [None, None, None]
 }
 
 mandatory_fields = {
@@ -157,6 +158,11 @@ def get_config(conf_file, overwrite_dict={}, prep_checkpoint_dir=True):
             raise ValueError("Specify 'conf_refining_from' when doing 'train_refine'")
         if not conf_dict["weights_refining_from"]:
             raise ValueError("Specify 'weights_refining_from' when doing 'train_refine'")
+    
+    conf_dict["xyz_max_reflect_distance"] = tuple(
+        conf_dict["vmap"]["n_voxels"][coord] if dist is None else dist
+        for coord, dist in zip(["x", "y", "z"], conf_dict["xyz_max_reflect_distance"])
+    )
 
     conf_namedtuple = namedtuple("conf", conf_dict)
     conf = conf_namedtuple(**conf_dict)

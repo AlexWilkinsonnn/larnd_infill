@@ -22,7 +22,8 @@ defaults = {
     "model_params" : {},
     "load_G" : "",
     "output_file" : "out.h5",
-    "smear_z" : 1
+    "smear_z" : 1,
+    "xyz_max_reflect_distance" : [None, None, None]
 }
 
 mandatory_fields = {
@@ -85,6 +86,11 @@ def get_config(conf_file, overwrite_dict={}):
 
     if conf_dict["adc_threshold"] is not None:
         conf_dict["adc_threshold"] = conf_dict["adc_threshold"] * conf_dict["scalefactors"][0]
+
+    conf_dict["xyz_max_reflect_distance"] = tuple(
+        conf_dict["vmap"]["n_voxels"][coord] if dist is None else dist
+        for coord, dist in zip(["x", "y", "z"], conf_dict["xyz_max_reflect_distance"])
+    )
 
     conf_namedtuple = namedtuple("conf", conf_dict)
     conf = conf_namedtuple(**conf_dict)
