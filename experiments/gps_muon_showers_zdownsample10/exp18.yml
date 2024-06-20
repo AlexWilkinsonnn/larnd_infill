@@ -1,0 +1,59 @@
+det_props: "/home/awilkins/larnd-sim/larnd-sim/larndsim/detector_properties/ndlar-module.yaml"
+pixel_layout: "/home/awilkins/larnd-sim/larnd-sim/larndsim/pixel_layouts/multi_tile_layout-3.0.40.yaml"
+
+device: "cuda:0"
+max_num_workers: 6
+
+checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/gps_muon_showers_zdownsample10"
+name: "exp18"
+train_script: "train_sigmask_adversarial"
+
+data_path: "/share/rcifdata/awilkins/larnd_infill_data/gps_muon_showers_zdownsample10"
+vmap_path: "/home/awilkins/larnd_infill/larnd_infill/voxel_maps/vmap_zdownresolution10.yml"
+data_prep_type: "reflection"
+scalefactors: [ 0.0041841004184100415, 0.3333333333333333 ] # 1/239, 1/3
+n_feats_in: 2 # adc
+n_feats_out: 1 # adc
+max_dataset_size: 20000
+max_valid_dataset_size: 2000
+adc_threshold: 0 # prune all predicted adc <= 1 in final layer
+load_G: "/home/awilkins/larnd_infill/larnd_infill/saved_models/gps_multi_muon_zdownsample-exp39_1_continue2_deep512extraconvs-netG_best_epoch13.pth"
+# save_model: "best"
+xyz_max_reflect_distance: [15, 15, 60] # voxels
+
+model_params:
+  final_layer: "hardtanh"
+  enc_ch: [8, 16, 32, 64, 128, 256, 512]
+  dec_ch: [8, 16, 32, 64, 128, 256, 512]
+  nonlinearity: "elu"
+  extra_convs: True
+  norm_layer: "instance"
+  use_dropout: False
+  enc_ks: [5, 3, 3]
+  dec_ks: [5, 3, 3]
+
+D_type: "vanilla"
+fake_label: 0.1
+real_label: 0.9
+# D_training_stopper:
+#   window_len: 100
+#   stop_loss_threshold: 0.5
+
+net_D: "off"
+
+optimizer_G: "SGD"
+optimizer_G_params:
+  lr: 0.01
+  momentum: 0.9
+optimizer_D: "SGD"
+optimizer_D_params:
+  lr: 0.0001
+  momentum: 0.9
+  weight_decay: 0.0001
+
+batch_size: 24
+loss_func: "PixelWise_MSELoss"
+epochs: 200
+lr_decay_iter: 2000
+loss_infill_weight: 1.0
+loss_GAN_weight: 0.00
