@@ -44,14 +44,13 @@ net_D: "off"
 optimizer_G: "Adam"
 optimizer_G_params:
   lr: 0.005
-  momentum: 0.9
 optimizer_D: "SGD"
 optimizer_D_params:
   lr: 0.0001
   momentum: 0.9
   weight_decay: 0.0001
 
-batch_size: 32
+batch_size: 24
 loss_func: "PixelWiseSmear_MSELoss"
 loss_smear_ker_xy_size: 1
 loss_smear_ker_z_size: 3
