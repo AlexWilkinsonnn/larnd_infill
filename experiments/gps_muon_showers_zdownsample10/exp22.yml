@@ -50,7 +50,7 @@ optimizer_D_params:
   momentum: 0.9
   weight_decay: 0.0001
 
-batch_size: 24
+batch_size: 16
 loss_func: "PixelWiseSmear_MSELoss"
 loss_smear_ker_xy_size: 1
 loss_smear_ker_z_size: 3
