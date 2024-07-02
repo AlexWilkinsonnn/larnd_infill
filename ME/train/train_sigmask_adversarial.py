@@ -47,11 +47,18 @@ def main(args):
             device=model.device
         )
         model.net_G.print_forward_pass(dummy_in)
-        dummy_in = ME.SparseTensor(
-            coordinates=dummy_coords,
-            features=torch.rand(1000, conf.n_feats_out),
-            device=model.device
-        )
+        if conf.net_D == "MEClassifier":
+            dummy_in = ME.TensorField(
+                coordinates=dummy_coords,
+                features=torch.rand(1000, conf.n_feats_out),
+                device=model.device
+            )
+        else:
+            dummy_in = ME.SparseTensor(
+                coordinates=dummy_coords,
+                features=torch.rand(1000, conf.n_feats_out),
+                device=model.device
+            )
         model.net_D.print_forward_pass(dummy_in)
         del dummy_in
 
