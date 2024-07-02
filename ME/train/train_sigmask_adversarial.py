@@ -40,6 +40,7 @@ def main(args):
     if PRINT_FORWARD_PASS:
         dummy_batch_coords = torch.cat([torch.zeros(500), torch.ones(500)]).unsqueeze(1)
         dummy_coords = torch.cat([dummy_batch_coords, torch.randint(0, 1000, (1000, 3))], axis=1)
+        # dummy_coords = torch.cat([dummy_batch_coords] + [torch.arange(0, 1000).unsqueeze(1) for _ in range(3)], axis=1)
         dummy_in = ME.SparseTensor(
             coordinates=dummy_coords,
             features=torch.rand(1000, conf.n_feats_in + 1),
