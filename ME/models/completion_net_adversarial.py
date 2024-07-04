@@ -184,7 +184,10 @@ class CompletionNetAdversarial(nn.Module):
         state_dict = torch.load(path, map_location=self.device)
         if hasattr(state_dict, "_metadata"):
             del state_dict._metadata
-        net.load_state_dict(state_dict)
+        missing, unexpected = net.load_state_dict(state_dict, strict=False)
+        if missing or unexpected:
+            print(f"{len(missing)} missing elements from loaded state dict")
+            print(f"{len(unexpected)} unexpected elements from loaded state dict")
 
     def new_epoch(self, epoch):
         if not self.D_training_activated and epoch >= self.D_pause_until_epoch:
@@ -660,7 +663,7 @@ class CompletionNetSigMask(nn.Module):
         self.dropout_layer = ME.MinkowskiDropout if use_dropout else nn.Identity
 
         self.depth = len(enc_ch)
-        if not (2 <= self.depth <= 7):
+        if not (2 <= self.depth <= 8):
             raise ValueError("len(enc_ch) {} is invalid (2 <= x <= 7)!".format(self.depth))
 
         self.enc_ks = enc_ks
@@ -683,6 +686,7 @@ class CompletionNetSigMask(nn.Module):
             self.enc_block_s8s16 = self._make_encoder_block(enc_ch[3], enc_ch[4], extra_convs)
             self.enc_block_s16s32 = self._make_encoder_block(enc_ch[4], enc_ch[5], extra_convs)
             self.enc_block_s32s64 = self._make_encoder_block(enc_ch[5], enc_ch[6], extra_convs)
+            self.enc_block_s64s128 = self._make_encoder_block(enc_ch[6], enc_ch[7], extra_convs)
         except IndexError: # Stop once we have all encoders needed for given depth
             pass
 
@@ -724,6 +728,12 @@ class CompletionNetSigMask(nn.Module):
                 self.dec_block_s32_post_cat_conv,
                 self.dec_block_s64_conv
             ) = self._make_decoder_block(enc_ch[6], dec_ch[5], extra_convs)
+            (
+                self.dec_block_s128s64_up,
+                self.dec_block_s64_norm,
+                self.dec_block_s64_post_cat_conv,
+                self.dec_block_s128_conv
+            ) = self._make_decoder_block(enc_ch[7], dec_ch[6], extra_convs)
         except IndexError: # Stop once we have all decoders needed for given depth
             pass
 
@@ -894,6 +904,22 @@ class CompletionNetSigMask(nn.Module):
             enc_s32 = self.enc_block_s16s32(enc_s16)
         if self.depth >= 7:
             enc_s64 = self.enc_block_s32s64(enc_s32)
+        if self.depth >= 8:
+            enc_s128 = self.enc_block_s64s128(enc_s64)
+
+        ###################################################
+        ## Decoder 128 -> 64
+        ###################################################
+        if self.depth >= 8:
+            dec_s128 = self.dec_block_s128_conv(enc_s128)
+
+            dec_s64 = self.dec_block_s128s64_up(dec_s128, coordinates=enc_s64.coordinate_map_key)
+            dec_s64 = self.dec_block_s64_norm(dec_s64)
+
+            dec_s64 = ME.cat((dec_s64, enc_s64))
+            dec_s64 = self.dec_block_s64_post_cat_conv(dec_s64)
+        elif self.depth == 7:
+            dec_s64 = enc_s64
 
         ###################################################
         ## Decoder 64 -> 32
