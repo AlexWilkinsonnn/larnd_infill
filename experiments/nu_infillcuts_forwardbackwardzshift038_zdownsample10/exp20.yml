@@ -5,7 +5,7 @@ device: "cuda:0"
 max_num_workers: 4
 
 checkpoints_dir: "/home/awilkins/larnd_infill/larnd_infill/checkpoints/nu_infillcuts_forwardbackwardzshift038_zdownsample10"
-name: "exp15"
+name: "exp20"
 train_script: "train_sigmask_adversarial"
 
 data_path: "/share/rcifdata/awilkins/larnd_infill_data/nu_infillcuts_forwardbackwardzshift038_zdownsample10/"
@@ -17,17 +17,17 @@ n_feats_out: 1 # adc
 max_dataset_size: 20000
 max_valid_dataset_size: 2000
 adc_threshold: 0 # prune all predicted adc <= 1 in final layer
-# load_G: "/home/awilkins/larnd_infill/larnd_infill/saved_models/gps_muon_showers_zdownsample10-exp15_1_deep512extraconvs-netG_best_epoch67.pth"
+load_G: "/home/awilkins/larnd_infill/larnd_infill/saved_models/gps_muon_showers_zdownsample10-exp15_1_deep512extraconvs-netG_best_epoch67.pth"
 # save_model: "best"
 xyz_max_reflect_distance: [15, 15, 60] # voxels
 
 model_params:
   final_layer: "hardtanh"
-  enc_ch: [64, 128, 256, 512, 1024]
-  dec_ch: [64, 128, 256, 512, 1024]
+  enc_ch: [8, 16, 32, 64, 128, 256, 512]
+  dec_ch: [8, 16, 32, 64, 128, 256, 512]
   nonlinearity: "elu"
   extra_convs: True
-  norm_layer: "instance"
+  norm_layer: "batch"
   use_dropout: False
   enc_ks: [5, 3, 3]
   dec_ks: [5, 3, 3]
