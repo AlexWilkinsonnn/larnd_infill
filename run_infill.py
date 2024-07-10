@@ -196,6 +196,9 @@ def parse_arguments():
     parser.add_argument(
         "--output_file", type=str, default=None, help="override config output_file"
     )
+    parser.add_argument(
+        "--cache_dir", type=str, default=None, help="override config cache_dir"
+    )
 
     args = parser.parse_args()
 
@@ -204,6 +207,8 @@ def parse_arguments():
         overwrite_dict["input_file"] = args.input_file
     if args.output_file is not None:
         overwrite_dict["output_file"] = args.output_file
+    if args.cache_dir is not None:
+        overwrite_dict["cache_dir"] = args.cache_dir
 
     return args, overwrite_dict
 
