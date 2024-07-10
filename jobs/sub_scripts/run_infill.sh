@@ -1,11 +1,12 @@
 #!/bin/bash
 #SBATCH -p GPU
 #SBATCH -N 1
-#SBATCH -c 4
+#SBATCH -c 2
 #SBATCH -t 60
 #SBATCH -J infill
 #SBATCH --gres=gpu:1
-#SBATCH --array=1-5
+#SBATCH --constraint="a100|l40s"
+#SBATCH --array=1-183
 #SBATCH --error=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/err/job.%x.%j.err
 #SBATCH --output=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/out/job.%x.%j.out
 
