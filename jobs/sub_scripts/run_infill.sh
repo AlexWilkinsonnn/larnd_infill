@@ -40,7 +40,7 @@ source setups/setup.sh
 
 python run_infill.py --input_file $input_file --output_file $output_file $CONFIG_FILE
 
-if [[ $? ==0 ]]
+if [[ $? == 0 ]]
 then
   cp ${SCRATCH_DIR}/${output_name} ${OUTPUT_DIR}/${output_name}
 else 
