@@ -6,7 +6,7 @@
 #SBATCH -J infill
 #SBATCH --gres=gpu:1
 #SBATCH --constraint="a100|l40s"
-#SBATCH --array=1-183
+#SBATCH --array=1-181
 #SBATCH --error=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/err/job.%x.%j.err
 #SBATCH --output=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/out/job.%x.%j.out
 
@@ -40,6 +40,11 @@ source setups/setup.sh
 
 python run_infill.py --input_file $input_file --output_file $output_file $CONFIG_FILE
 
-cp ${SCRATCH_DIR}/${output_name} ${OUTPUT_DIR}/${output_name}
+if [[ $? ==0 ]]
+then
+  cp ${SCRATCH_DIR}/${output_name} ${OUTPUT_DIR}/${output_name}
+else 
+  echo "Python script exited badly! not copying $output_name to $OUTPUT_DIR"
+fi
 
 rm -r ${SCRATCH_DIR}
