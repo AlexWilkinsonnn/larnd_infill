@@ -38,7 +38,10 @@ echo "Output file will be ${output_file_final}"
 cd /home/awilkins/larnd_infill/larnd_infill
 source setups/setup.sh
 
-python run_infill.py --input_file $input_file --output_file $output_file $CONFIG_FILE
+python run_infill.py --input_file $input_file \
+                     --output_file $output_file \
+                     --cache_dir $SCRATCH_DIR \
+                     $CONFIG_FILE
 
 if [[ $? == 0 ]]
 then
