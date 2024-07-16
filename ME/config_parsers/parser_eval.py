@@ -23,7 +23,8 @@ defaults = {
     "load_G" : "",
     "output_file" : "out.h5",
     "smear_z" : 1,
-    "xyz_max_reflect_distance" : [None, None, None]
+    "xyz_max_reflect_distance" : [None, None, None],
+    "infilled_voxel_splits": 1
 }
 
 mandatory_fields = {
