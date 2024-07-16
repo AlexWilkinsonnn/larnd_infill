@@ -19,6 +19,7 @@ import torch
 from ME.config_parsers.parser_eval import get_config
 from ME.dataset import LarndDataset, CollateCOO
 from ME.models.completion_net_adversarial import CompletionNetAdversarialEval
+from ME.train.train_sigmask_adversarial import plot_pred
 
 def main(args, overwrite_dict):
     conf = get_config(args.config, overwrite_dict=overwrite_dict)
@@ -72,11 +73,33 @@ def main(args, overwrite_dict):
             s_in_infill_mask = s_in.F[:, -1] == 1
             infill_coords = s_in.C[s_in_infill_mask].type(torch.float)
 
+            if args.plot:
+                plot_pred(
+                    vis["s_pred"], vis["s_in"], vis["s_target"],
+                    data,
+                    conf.vmap,
+                    conf.scalefactors,
+                    "example_voxels",
+                    conf.detector,
+                    save_dir="/home/awilkins/larnd_infill/larnd_infill/infill_debug_plots",
+                    save_tensors=False,
+                    max_evs=conf.batch_size,
+                    skip_target=True,
+                    skip_predonly=True
+                )
+                print("Plotting batch finished")
+
             b_size = len(data["mask_x"])
             for i_b in range(b_size):
                 event_id = int(os.path.basename(data["data_path"][i_b]).rstrip(".npz"))
 
                 orig_p3d = in_f["3d_packets"][in_f["3d_packets"]["eventID"] == event_id]
+                orig_p3d[orig_p3d["forward_facing_anode"] == 1]["z"] += (
+                    conf.forward_facing_anode_zshift
+                )
+                orig_p3d[orig_p3d["forward_facing_anode"] == 0]["z"] += (
+                    conf.backward_facing_anode_zshift
+                )
 
                 infill_coords_b = infill_coords[infill_coords[:, 0] == i_b]
                 infill_feats_b = s_pred.features_at_coordinates(infill_coords_b)
@@ -198,6 +221,9 @@ def parse_arguments():
     )
     parser.add_argument(
         "--cache_dir", type=str, default=None, help="override config cache_dir"
+    )
+    parser.add_argument(
+        "--plot", action="store_true", help="plot infilled events"
     )
 
     args = parser.parse_args()
