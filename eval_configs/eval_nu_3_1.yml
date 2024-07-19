@@ -12,7 +12,7 @@ backward_facing_anode_zshift: -0.38
 # For zdownsample10 vmap, each voxel corresponds to 2 far detector ticks (1us to 0.5us widths).
 # So we should spread each infilled voxel over two FD time x positions. Ideally I should've used
 # zdownsample of 5 but no time to go back and do that now
-infilled_voxel_splits: 2
+infilled_voxel_splits: 3
 
 # model
 n_feats_in: 2 # adc
