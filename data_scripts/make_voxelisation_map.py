@@ -30,6 +30,9 @@ def main(args):
     elif args.preset == 3:
         x_step, y_step = detector.pixel_pitch, detector.pixel_pitch
         z_step = 2.4 * detector.vdrift
+    elif args.preset == 4:
+        x_step, y_step = detector.pixel_pitch, detector.pixel_pitch
+        z_step = 0.5 * detector.vdrift
     else:
         raise ValueError("No preset={}".format(args.preset))
 
@@ -174,7 +177,8 @@ def parse_arguments():
             "0 (no downsampling)|"
             "1 (downsample z by 10)|"
             "2 (downsample z by 40)|"
-            "2 (downsample z by 24 s.t. (x,y) and z are roughly the same spatial size)"
+            "3 (downsample z by 24 s.t. (x,y) and z are roughly the same spatial size)|"
+            "4 (downsample z by 5)"
         )
     )
 
