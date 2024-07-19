@@ -433,7 +433,7 @@ def get_loss_str(losses_acc, loss_scalefactors):
 def plot_pred(
     s_pred, s_in, s_target, data, vmap, scalefactors, save_name_prefix, detector,
     max_evs=2, save_dir="test/", save_tensors=False, skip_target=False, skip_predonly=False,
-    adc_threshold=4
+    adc_threshold=4, autocrop=False
 ):
     for i_batch, (
         coords_pred, feats_pred, coords_target, feats_target, coords_in, feats_in
@@ -503,7 +503,8 @@ def plot_pred(
             saveas=os.path.join(save_dir, "{}_batch{}_pred.pdf".format(save_name_prefix, i_batch)),
             max_feat=150,
             signal_mask_gap_coords=coords_sigmask_gap_packed,
-            signal_mask_active_coords=coords_sigmask_active_packed
+            signal_mask_active_coords=coords_sigmask_active_packed,
+            autocrop=autocrop
         )
         if not skip_predonly:
             plot_ndlar_voxels_2(
@@ -516,7 +517,8 @@ def plot_pred(
                 ),
                 max_feat=150,
                 signal_mask_gap_coords=coords_sigmask_gap_packed,
-                signal_mask_active_coords=coords_sigmask_active_packed
+                signal_mask_active_coords=coords_sigmask_active_packed,
+                autocrop=autocrop
             )
         if not skip_target:
             plot_ndlar_voxels_2(
@@ -529,7 +531,8 @@ def plot_pred(
                 ),
                 max_feat=150,
                 signal_mask_gap_coords=coords_sigmask_gap_packed,
-                signal_mask_active_coords=coords_sigmask_active_packed
+                signal_mask_active_coords=coords_sigmask_active_packed,
+                autocrop=autocrop
             )
 
         if save_tensors:

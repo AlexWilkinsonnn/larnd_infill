@@ -5,3 +5,4 @@ checkpoints/*/
 __pycache__
 test_data
 jobs/logs
+infill_debug_plots/

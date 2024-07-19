@@ -303,7 +303,8 @@ def plot_ndlar_voxels_2(
     tracks=None, signal_mask_active_coords=None, signal_mask_gap_coords=None,
     target_coords=None, target_feats=None,
     single_proj_pretty=False,
-    plot_3d=False
+    plot_3d=False,
+    autocrop=False
 ):
     norm_feats = matplotlib.colors.Normalize(vmin=min_feat, vmax=max_feat)
     if target_coords is None:
@@ -482,12 +483,27 @@ def plot_ndlar_voxels_2(
             ax[1].plot((t.x_start, t.x_end), (t.z_start, t.z_end), color="r", linewidth=0.5)
             ax[2].plot((t.z_start, t.z_end), (t.y_start, t.y_end), color="r", linewidth=0.5)
 
-    ax[0].set_xlim(detector.tpc_borders[-1][0][1], detector.tpc_borders[0][0][0])
-    ax[1].set_xlim(detector.tpc_borders[-1][0][1], detector.tpc_borders[0][0][0])
-    ax[2].set_xlim(detector.tpc_borders[-1][2][0], detector.tpc_borders[0][2][0])
-    ax[0].set_ylim(detector.tpc_borders[-1][1][1], detector.tpc_borders[0][1][0])
-    ax[1].set_ylim(detector.tpc_borders[-1][2][0], detector.tpc_borders[0][2][0])
-    ax[2].set_ylim(detector.tpc_borders[-1][1][1], detector.tpc_borders[0][1][0])
+    if autocrop:
+        max_x = min(x_vmap[max(coords[0])][0] + 20, detector.tpc_borders[-1][0][1])
+        min_x = max(x_vmap[min(coords[0])][0] - 20, detector.tpc_borders[0][0][0])
+        max_y = min(y_vmap[max(coords[1])][0] + 20, detector.tpc_borders[-1][1][1])
+        min_y = max(y_vmap[min(coords[1])][0] - 20, detector.tpc_borders[0][1][0])
+        max_z = min(z_vmap[max(coords[2])][0] + 20, detector.tpc_borders[-1][2][0])
+        min_z = max(z_vmap[min(coords[2])][0] - 20, detector.tpc_borders[0][2][0])
+    else:
+        max_x = detector.tpc_borders[0][0][0]
+        min_x = detector.tpc_borders[-1][0][1]
+        max_y = detector.tpc_borders[0][1][0]
+        min_y = detector.tpc_borders[-1][1][1]
+        max_z = detector.tpc_borders[0][2][0]
+        min_z = detector.tpc_borders[-1][2][0]
+
+    ax[0].set_xlim(min_x, max_x)
+    ax[1].set_xlim(min_x, max_x)
+    ax[2].set_xlim(min_z, max_z)
+    ax[0].set_ylim(min_y, max_y)
+    ax[1].set_ylim(min_z, max_z)
+    ax[2].set_ylim(min_y, max_y)
     ax[0].set_xlabel("x")
     ax[1].set_xlabel("x")
     ax[2].set_xlabel("z")

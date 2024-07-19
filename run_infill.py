@@ -7,12 +7,13 @@ Load larnd-sim data from h5 file and run trained infill model on it.
 NOTE: The zshifting is applied here before the infill step. So it should not be applied again
 when loading into larsoft
 """
-import argparse, os, shutil
+import argparse, os, shutil, sys
 import datetime
 
-import h5py, sparse
+import h5py, sparse, yaml
 from tqdm import tqdm
 import numpy as np
+import matplotlib; from matplotlib import pyplot as plt
 
 import torch
 
@@ -73,7 +74,7 @@ def main(args, overwrite_dict):
             s_in_infill_mask = s_in.F[:, -1] == 1
             infill_coords = s_in.C[s_in_infill_mask].type(torch.float)
 
-            if args.plot:
+            if args.plot_only:
                 plot_pred(
                     vis["s_pred"], vis["s_in"], vis["s_target"],
                     data,
@@ -85,21 +86,17 @@ def main(args, overwrite_dict):
                     save_tensors=False,
                     max_evs=conf.batch_size,
                     skip_target=True,
-                    skip_predonly=True
+                    skip_predonly=True,
+                    autocrop=True,
+                    adc_threshold=0
                 )
-                print("Plotting batch finished")
+                print("Plotting batch model voxels finished")
 
             b_size = len(data["mask_x"])
             for i_b in range(b_size):
                 event_id = int(os.path.basename(data["data_path"][i_b]).rstrip(".npz"))
 
                 orig_p3d = in_f["3d_packets"][in_f["3d_packets"]["eventID"] == event_id]
-                orig_p3d[orig_p3d["forward_facing_anode"] == 1]["z"] += (
-                    conf.forward_facing_anode_zshift
-                )
-                orig_p3d[orig_p3d["forward_facing_anode"] == 0]["z"] += (
-                    conf.backward_facing_anode_zshift
-                )
 
                 infill_coords_b = infill_coords[infill_coords[:, 0] == i_b]
                 infill_feats_b = s_pred.features_at_coordinates(infill_coords_b)
@@ -113,7 +110,27 @@ def main(args, overwrite_dict):
                     dtype=p3d_infill_dtype
                 )
                 for i_p, p3d in enumerate(orig_p3d):
-                    packets_3d_infill_ev[i_p] = p3d
+                    packets_3d_infill_ev[i_p]["eventID"] = event_id
+                    packets_3d_infill_ev[i_p]["adc"] = p3d["adc"]
+                    packets_3d_infill_ev[i_p]["x"] = p3d["x"]
+                    packets_3d_infill_ev[i_p]["x_module"] = p3d["x_module"]
+                    packets_3d_infill_ev[i_p]["y"] = p3d["y"]
+                    if p3d["forward_facing_anode"]:
+                        packets_3d_infill_ev[i_p]["z"] = (
+                            p3d["z"] + conf.forward_facing_anode_zshift
+                        )
+                        packets_3d_infill_ev[i_p]["z_module"] = (
+                            p3d["z_module"] + conf.forward_facing_anode_zshift
+                        )
+                    else:
+                        packets_3d_infill_ev[i_p]["z"] = (
+                            p3d["z"] + conf.backward_facing_anode_zshift
+                        )
+                        packets_3d_infill_ev[i_p]["z_module"] = (
+                            p3d["z_module"] + conf.backward_facing_anode_zshift
+                        )
+                    packets_3d_infill_ev[i_p]["forward_facing_anode"] = p3d["forward_facing_anode"]
+                    packets_3d_infill_ev[i_p]["infilled"] = 0
                 i_p = len(orig_p3d)
                 for coord, feat in zip(infill_coords_b, infill_feats_b):
                     x_l_h = conf.vmap["x"][coord[1].item()]
@@ -138,6 +155,20 @@ def main(args, overwrite_dict):
                         packets_3d_infill_ev[i_p]["infilled"] = 1
                         i_p += 1
                 packets_3d_infill_list.append(packets_3d_infill_ev)
+
+            if args.plot_only:
+                with open("voxel_maps/vmap_zdownresolution5.yml", "r") as f:
+                    vmap = yaml.load(f, Loader=yaml.FullLoader)
+                plot_infilled_revoxelise(
+                    packets_3d_infill_list,
+                    conf,
+                    vmap,
+                    data["mask_x"][0], data["mask_z"][0],
+                    "/home/awilkins/larnd_infill/larnd_infill/infill_debug_plots",
+                    "example_revoxelised"
+                )
+                print("Plotting batch outputted voxels finished. Exiting.")
+                sys.exit()
 
         packets_3d_infill = np.concatenate(packets_3d_infill_list, axis=0)
         out_f["3d_packets_infilled"].resize((len(packets_3d_infill),))
@@ -215,6 +246,113 @@ def make_voxels(conf, f, output_dir):
 
         sparse.save_npz(os.path.join(output_dir, "{}.npz".format(event_id)), s_voxelised)
 
+def plot_infilled_revoxelise(
+    p3ds_infill_list, conf, vmap, x_gaps, z_gaps, save_dir, save_name_prefix
+):
+    x_bin_edges = sorted([ bin[0] for bin in vmap["x"] if type(bin) == tuple ])
+    x_bin_edges.append(max(bin[1] for bin in vmap["x"] if type(bin) == tuple))
+    x_bin_edges = np.array(x_bin_edges)
+    y_bin_edges = sorted([ bin[0] for bin in vmap["y"] if type(bin) == tuple ])
+    y_bin_edges.append(max(bin[1] for bin in vmap["y"] if type(bin) == tuple))
+    y_bin_edges = np.array(y_bin_edges)
+    z_bin_edges = sorted([ bin[0] for bin in vmap["z"] if type(bin) == tuple ])
+    z_bin_edges.append(max(bin[1] for bin in vmap["z"] if type(bin) == tuple))
+    z_bin_edges = np.array(z_bin_edges)
+
+    norm_feats = matplotlib.colors.Normalize(vmin=0, vmax=150)
+    m_feats = matplotlib.cm.ScalarMappable(norm=norm_feats, cmap=matplotlib.cm.jet)
+
+    for i_p3ds, p3ds in enumerate(p3ds_infill_list):
+        fig, ax = plt.subplots(1, 3, figsize=(24, 6))
+
+        y_pos = conf.detector.tpc_borders[-1][1][1]
+        y_size = conf.detector.tpc_borders[0][1][0] - conf.detector.tpc_borders[-1][1][1]
+        z_pos = conf.detector.tpc_borders[-1][2][0]
+        z_size = conf.detector.tpc_borders[0][2][0] - conf.detector.tpc_borders[-1][2][0]
+        for x_gap_coord in x_gaps:
+            x_bin = vmap["x"][x_gap_coord]
+            x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
+            ax[0].add_patch(
+                matplotlib.patches.Rectangle((x_pos, y_pos), x_size, y_size, fc="gray", alpha=0.3)
+            )
+            ax[1].add_patch(
+                matplotlib.patches.Rectangle((x_pos, z_pos), x_size, z_size, fc="gray", alpha=0.3)
+            )
+        x_pos = conf.detector.tpc_borders[-1][0][1]
+        x_size = conf.detector.tpc_borders[0][0][0] - conf.detector.tpc_borders[-1][0][1]
+        y_pos = conf.detector.tpc_borders[-1][1][1]
+        y_size = conf.detector.tpc_borders[0][1][0] - conf.detector.tpc_borders[-1][1][1]
+        for z_gap_coord in z_gaps:
+            z_bin = vmap["z"][z_gap_coord]
+            z_size, z_pos = z_bin[1] - z_bin[0], z_bin[0]
+            ax[1].add_patch(
+                matplotlib.patches.Rectangle((x_pos, z_pos), x_size, z_size, fc="gray", alpha=0.3)
+            )
+            ax[2].add_patch(
+                matplotlib.patches.Rectangle((z_pos, y_pos), z_size, y_size, fc="gray", alpha=0.3)
+            )
+
+        coords = [
+            [ np.histogram([x], bins=x_bin_edges)[0].nonzero()[0][0] for x in p3ds["x"] ],
+            [ np.histogram([y], bins=y_bin_edges)[0].nonzero()[0][0] for y in p3ds["y"] ],
+            [ np.histogram([z], bins=z_bin_edges)[0].nonzero()[0][0] for z in p3ds["z"] ]
+        ]
+        feats = [ f for f in p3ds["adc"] ]
+
+        curr_patches_xy, curr_patches_xz, curr_patches_zy = set(), set(), set()
+        for coord_x, coord_y, coord_z, feat in zip(*coords, feats):
+            x_bin = vmap["x"][coord_x]
+            x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
+            y_bin = vmap["y"][coord_y]
+            y_size, y_pos = (y_bin[1] - y_bin[0]), y_bin[0]
+            z_bin = vmap["z"][coord_z]
+            z_size, z_pos = (z_bin[1] - z_bin[0]), z_bin[0]
+
+            c = m_feats.to_rgba(feat)
+            alpha = 1.0
+
+            pos_xy = (x_pos, y_pos)
+            if pos_xy not in curr_patches_xy:
+                curr_patches_xy.add(pos_xy)
+                ax[0].add_patch(
+                    matplotlib.patches.Rectangle(pos_xy, x_size, y_size, fc=c, alpha=alpha)
+                )
+            pos_xz = (x_pos, z_pos)
+            if pos_xz not in curr_patches_xz:
+                curr_patches_xz.add(pos_xz)
+                ax[1].add_patch(
+                    matplotlib.patches.Rectangle(pos_xz, x_size, z_size, fc=c, alpha=alpha)
+                )
+            pos_zy = (z_pos, y_pos)
+            if pos_zy not in curr_patches_zy:
+                curr_patches_zy.add(pos_zy)
+                ax[2].add_patch(
+                    matplotlib.patches.Rectangle(pos_zy, z_size, y_size, fc=c, alpha=alpha)
+                )
+
+        max_x = min(vmap["x"][max(coords[0])][0] + 20, conf.detector.tpc_borders[-1][0][1])
+        min_x = max(vmap["x"][min(coords[0])][0] - 20, conf.detector.tpc_borders[0][0][0])
+        max_y = min(vmap["y"][max(coords[1])][0] + 20, conf.detector.tpc_borders[-1][1][1])
+        min_y = max(vmap["y"][min(coords[1])][0] - 20, conf.detector.tpc_borders[0][1][0])
+        max_z = min(vmap["z"][max(coords[2])][0] + 20, conf.detector.tpc_borders[-1][2][0])
+        min_z = max(vmap["z"][min(coords[2])][0] - 20, conf.detector.tpc_borders[0][2][0])
+
+        ax[0].set_xlim(min_x, max_x)
+        ax[1].set_xlim(min_x, max_x)
+        ax[2].set_xlim(min_z, max_z)
+        ax[0].set_ylim(min_y, max_y)
+        ax[1].set_ylim(min_z, max_z)
+        ax[2].set_ylim(min_y, max_y)
+        ax[0].set_xlabel("x")
+        ax[1].set_xlabel("x")
+        ax[2].set_xlabel("z")
+        ax[0].set_ylabel("y")
+        ax[1].set_ylabel("z")
+        ax[2].set_ylabel("y")
+
+        plt.savefig(os.path.join(save_dir, f"{save_name_prefix}_batch{i_p3ds}_pred.pdf"))
+        plt.close()
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
@@ -230,7 +368,7 @@ def parse_arguments():
         "--cache_dir", type=str, default=None, help="override config cache_dir"
     )
     parser.add_argument(
-        "--plot", action="store_true", help="plot infilled events"
+        "--plot_only", action="store_true", help="make some debuggin plots and exit"
     )
 
     args = parser.parse_args()
