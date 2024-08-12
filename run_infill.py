@@ -111,10 +111,11 @@ def main(args, overwrite_dict):
                     (
                         len(orig_p3d) +
                         len(infill_coords_b_nonzero) * conf.infilled_voxel_splits +
-                        len(infill_coords_b)
+                        len(infill_coords_b) * conf.infilled_voxel_splits
                     ),
                     dtype=p3d_infill_dtype
                 )
+                # Original input packets
                 for i_p, p3d in enumerate(orig_p3d):
                     packets_3d_infill_ev[i_p]["eventID"] = event_id
                     packets_3d_infill_ev[i_p]["adc"] = p3d["adc"]
@@ -138,6 +139,7 @@ def main(args, overwrite_dict):
                     packets_3d_infill_ev[i_p]["forward_facing_anode"] = p3d["forward_facing_anode"]
                     packets_3d_infill_ev[i_p]["infilled"] = 0
                 i_p = len(orig_p3d)
+                # Infilled packets
                 for coord, feat in zip(infill_coords_b_nonzero, infill_feats_b_nonzero):
                     x_l_h = conf.vmap["x"][coord[1].item()]
                     x = (x_l_h[0] + x_l_h[1]) / 2
@@ -160,7 +162,7 @@ def main(args, overwrite_dict):
                         packets_3d_infill_ev[i_p]["forward_facing_anode"] = 2
                         packets_3d_infill_ev[i_p]["infilled"] = 1
                         i_p += 1
-                # Include initial reflections mask too
+                # Input reflection mask
                 for coord, feat in zip(infill_coords_b, infill_feats_b):
                     x_l_h = conf.vmap["x"][coord[1].item()]
                     x = (x_l_h[0] + x_l_h[1]) / 2
