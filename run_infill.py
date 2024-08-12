@@ -101,12 +101,18 @@ def main(args, overwrite_dict):
                 infill_coords_b = infill_coords[infill_coords[:, 0] == i_b]
                 infill_feats_b = s_pred.features_at_coordinates(infill_coords_b)
                 infill_feats_b_nonzero_mask = infill_feats_b[:, 0] != 0
-                infill_coords_b = infill_coords_b[infill_feats_b_nonzero_mask].type(torch.int)
-                infill_feats_b = infill_feats_b[infill_feats_b_nonzero_mask]
-                infill_feats_b = infill_feats_b / conf.scalefactors[0]
+                infill_coords_b_nonzero = (
+                    infill_coords_b[infill_feats_b_nonzero_mask].type(torch.int)
+                )
+                infill_feats_b_nonzero = infill_feats_b[infill_feats_b_nonzero_mask]
+                infill_feats_b_nonzero = infill_feats_b / conf.scalefactors[0]
 
                 packets_3d_infill_ev = np.empty(
-                    len(orig_p3d) + len(infill_coords_b) * conf.infilled_voxel_splits,
+                    (
+                        len(orig_p3d) +
+                        len(infill_coords_b_nonzero) * conf.infilled_voxel_splits +
+                        len(infill_coords_b)
+                    ),
                     dtype=p3d_infill_dtype
                 )
                 for i_p, p3d in enumerate(orig_p3d):
@@ -132,7 +138,7 @@ def main(args, overwrite_dict):
                     packets_3d_infill_ev[i_p]["forward_facing_anode"] = p3d["forward_facing_anode"]
                     packets_3d_infill_ev[i_p]["infilled"] = 0
                 i_p = len(orig_p3d)
-                for coord, feat in zip(infill_coords_b, infill_feats_b):
+                for coord, feat in zip(infill_coords_b_nonzero, infill_feats_b_nonzero):
                     x_l_h = conf.vmap["x"][coord[1].item()]
                     x = (x_l_h[0] + x_l_h[1]) / 2
                     y_l_h = conf.vmap["y"][coord[2].item()]
@@ -153,6 +159,28 @@ def main(args, overwrite_dict):
                         packets_3d_infill_ev[i_p]["z_module"] = 0
                         packets_3d_infill_ev[i_p]["forward_facing_anode"] = 2
                         packets_3d_infill_ev[i_p]["infilled"] = 1
+                        i_p += 1
+                # Include initial reflections mask too
+                for coord, feat in zip(infill_coords_b, infill_feats_b):
+                    x_l_h = conf.vmap["x"][coord[1].item()]
+                    x = (x_l_h[0] + x_l_h[1]) / 2
+                    y_l_h = conf.vmap["y"][coord[2].item()]
+                    y = (y_l_h[0] + y_l_h[1]) / 2
+                    z_l_h = conf.vmap["z"][coord[3].item()]
+                    for i in range(conf.infilled_voxel_splits):
+                        z = (
+                            z_l_h[0] +
+                            (i + 1) * (z_l_h[1] - z_l_h[0]) / (conf.infilled_voxel_splits + 1)
+                        )
+                        packets_3d_infill_ev[i_p]["eventID"] = event_id
+                        packets_3d_infill_ev[i_p]["adc"] = 0
+                        packets_3d_infill_ev[i_p]["x"] = x
+                        packets_3d_infill_ev[i_p]["x_module"] = 0
+                        packets_3d_infill_ev[i_p]["y"] = y
+                        packets_3d_infill_ev[i_p]["z"] = z
+                        packets_3d_infill_ev[i_p]["z_module"] = 0
+                        packets_3d_infill_ev[i_p]["forward_facing_anode"] = 2
+                        packets_3d_infill_ev[i_p]["infilled"] = 2
                         i_p += 1
                 packets_3d_infill_list.append(packets_3d_infill_ev)
 
