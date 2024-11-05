@@ -7,8 +7,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --constraint="a100|l40s"
 #SBATCH --array=1-181
-#SBATCH --error=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/err/job.%x.%j.err
-#SBATCH --output=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/out/job.%x.%j.out
+#SBATCH --error=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/err/%x.%A_%a.err
+#SBATCH --output=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/out/%x.%A_%a.out
 
 ################################################################################
 # Options

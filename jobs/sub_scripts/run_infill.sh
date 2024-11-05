@@ -7,8 +7,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --constraint="a100|l40s"
 #SBATCH --array=1-181
-#SBATCH --error=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/err/job.%x.%j.err
-#SBATCH --output=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/out/job.%x.%j.out
+#SBATCH --error=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/err/%x.%A_%a.err
+#SBATCH --output=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/out/%x.%A_%a.out
 
 ################################################################################
 # Options
@@ -46,7 +46,7 @@ python run_infill.py --input_file $input_file \
 if [[ $? == 0 ]]
 then
   cp ${SCRATCH_DIR}/${output_name} ${OUTPUT_DIR}/${output_name}
-else 
+else
   echo "Python script exited badly! not copying $output_name to $OUTPUT_DIR"
 fi
 
