@@ -59,6 +59,12 @@ def main(args, overwrite_dict):
 
     with h5py.File(args.output_file, "w") as out_f:
         for key in in_f.keys():
+            if (
+                (key == "3d_packets" and args.drop_3dpackets) or
+                ((key == "tracks" or key == "mc_packets_assn") and args.drop_tracks) or
+                ((key == "_header" or key == "configs" or key == "messages") and args.drop_guff)
+            ):
+                continue
             data = np.array(in_f[key])
             out_f.create_dataset(key, data=data)
         p3d_infill_dtype = in_f["3d_packets"].dtype
@@ -400,6 +406,18 @@ def parse_arguments():
     parser.add_argument(
         "--plot_only", action="store_true", help="make some debuggin plots and exit"
     )
+    parser.add_argument(
+        "--drop_3dpackets", action="store_true", help="drop the '3d_packets' group from the hdf5"
+    )
+    parser.add_argument(
+        "--drop_tracks", action="store_true",
+        help="drop the 'tracks' and 'mc_packets_assn' groups from the hdf5"
+    )
+    parser.add_argument(
+        "--drop_guff", action="store_true",
+        help="drop the '_header', 'configs', and 'messages' groups from the hdf5"
+    )
+
 
     args = parser.parse_args()
 
