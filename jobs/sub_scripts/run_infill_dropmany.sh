@@ -42,14 +42,14 @@ python run_infill.py --input_file $input_file \
                      --output_file $output_file \
                      --cache_dir $SCRATCH_DIR \
                      --drop_3dpackets \
-                     --drop_tracke \
+                     --drop_tracks \
                      --drop_guff \
                      $CONFIG_FILE
 
 if [[ $? == 0 ]]
 then
   cp ${SCRATCH_DIR}/${output_name} ${OUTPUT_DIR}/${output_name}
-else 
+else
   echo "Python script exited badly! not copying $output_name to $OUTPUT_DIR"
 fi
 
