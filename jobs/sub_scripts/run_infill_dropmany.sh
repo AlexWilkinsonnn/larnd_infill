@@ -42,7 +42,7 @@ python run_infill.py --input_file $input_file \
                      --output_file $output_file \
                      --cache_dir $SCRATCH_DIR \
                      --drop_3dpackets \
-                     --drop_tracks \
+                     --drop_larndsim \
                      --drop_guff \
                      $CONFIG_FILE
 
