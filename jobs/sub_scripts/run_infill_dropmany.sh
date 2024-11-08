@@ -6,9 +6,9 @@
 #SBATCH -J infill
 #SBATCH --gres=gpu:1
 #SBATCH --constraint="a100|l40s"
-#SBATCH --array=1-181
-#SBATCH --error=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/err/%x.%A_%a.err
-#SBATCH --output=/home/awilkins/larnd_infill/larnd_infill/jobs/logs/out/%x.%A_%a.out
+#SBATCH --array=1-134
+#SBATCH --output=/home/awilkins/thesis_resp_trans/logs/out/%x.%A_%a.out
+#SBATCH --error=/home/awilkins/thesis_resp_trans/logs/err/%x.%A_%a.err
 
 ################################################################################
 # Options
@@ -35,7 +35,7 @@ echo "With cuda device ${CUDA_VISIBLE_DEVICES}"
 echo "Input file is ${input_file}"
 echo "Output file will be ${output_file_final}"
 
-cd /home/awilkins/larnd_infill/larnd_infill
+cd /home/awilkins/thesis_resp_trans/larnd_infill
 source setups/setup.sh
 
 python run_infill.py --input_file $input_file \

@@ -117,7 +117,7 @@ def main(args, overwrite_dict):
                     (
                         len(orig_p3d) +
                         len(infill_coords_b_nonzero) * conf.infilled_voxel_splits +
-                        len(infill_coords_b) * conf.infilled_voxel_splits
+                        0 if args.skip_reflection_mask else len(infill_coords_b) * conf.infilled_voxel_splits
                     ),
                     dtype=p3d_infill_dtype
                 )
@@ -169,27 +169,28 @@ def main(args, overwrite_dict):
                         packets_3d_infill_ev[i_p]["infilled"] = 1
                         i_p += 1
                 # Input reflection mask
-                for coord, feat in zip(infill_coords_b, infill_feats_b):
-                    x_l_h = conf.vmap["x"][coord[1].item()]
-                    x = (x_l_h[0] + x_l_h[1]) / 2
-                    y_l_h = conf.vmap["y"][coord[2].item()]
-                    y = (y_l_h[0] + y_l_h[1]) / 2
-                    z_l_h = conf.vmap["z"][coord[3].item()]
-                    for i in range(conf.infilled_voxel_splits):
-                        z = (
-                            z_l_h[0] +
-                            (i + 1) * (z_l_h[1] - z_l_h[0]) / (conf.infilled_voxel_splits + 1)
-                        )
-                        packets_3d_infill_ev[i_p]["eventID"] = event_id
-                        packets_3d_infill_ev[i_p]["adc"] = 0
-                        packets_3d_infill_ev[i_p]["x"] = x
-                        packets_3d_infill_ev[i_p]["x_module"] = 0
-                        packets_3d_infill_ev[i_p]["y"] = y
-                        packets_3d_infill_ev[i_p]["z"] = z
-                        packets_3d_infill_ev[i_p]["z_module"] = 0
-                        packets_3d_infill_ev[i_p]["forward_facing_anode"] = 2
-                        packets_3d_infill_ev[i_p]["infilled"] = 2
-                        i_p += 1
+                if not args.skip_reflection_mask:
+                    for coord, feat in zip(infill_coords_b, infill_feats_b):
+                        x_l_h = conf.vmap["x"][coord[1].item()]
+                        x = (x_l_h[0] + x_l_h[1]) / 2
+                        y_l_h = conf.vmap["y"][coord[2].item()]
+                        y = (y_l_h[0] + y_l_h[1]) / 2
+                        z_l_h = conf.vmap["z"][coord[3].item()]
+                        for i in range(conf.infilled_voxel_splits):
+                            z = (
+                                z_l_h[0] +
+                                (i + 1) * (z_l_h[1] - z_l_h[0]) / (conf.infilled_voxel_splits + 1)
+                            )
+                            packets_3d_infill_ev[i_p]["eventID"] = event_id
+                            packets_3d_infill_ev[i_p]["adc"] = 0
+                            packets_3d_infill_ev[i_p]["x"] = x
+                            packets_3d_infill_ev[i_p]["x_module"] = 0
+                            packets_3d_infill_ev[i_p]["y"] = y
+                            packets_3d_infill_ev[i_p]["z"] = z
+                            packets_3d_infill_ev[i_p]["z_module"] = 0
+                            packets_3d_infill_ev[i_p]["forward_facing_anode"] = 2
+                            packets_3d_infill_ev[i_p]["infilled"] = 2
+                            i_p += 1
                 packets_3d_infill_list.append(packets_3d_infill_ev)
 
             if args.plot_only:
@@ -417,7 +418,10 @@ def parse_arguments():
         "--drop_guff", action="store_true",
         help="drop the '_header', 'configs', and 'messages' groups from the hdf5"
     )
-
+    parser.add_argument(
+        "--skip_reflection_mask", action="store_true",
+        help="Do not include the infill reflection mask in the outputted packets"
+    )
 
     args = parser.parse_args()
 
