@@ -111,13 +111,13 @@ def main(args, overwrite_dict):
                     infill_coords_b[infill_feats_b_nonzero_mask].type(torch.int)
                 )
                 infill_feats_b_nonzero = infill_feats_b[infill_feats_b_nonzero_mask]
-                infill_feats_b_nonzero = infill_feats_b / conf.scalefactors[0]
+                infill_feats_b_nonzero = infill_feats_b_nonzero / conf.scalefactors[0]
 
                 packets_3d_infill_ev = np.empty(
                     (
                         len(orig_p3d) +
                         len(infill_coords_b_nonzero) * conf.infilled_voxel_splits +
-                        0 if args.skip_reflection_mask else len(infill_coords_b) * conf.infilled_voxel_splits
+                        (0 if args.skip_reflection_mask else len(infill_coords_b) * conf.infilled_voxel_splits)
                     ),
                     dtype=p3d_infill_dtype
                 )

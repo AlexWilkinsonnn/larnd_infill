@@ -33,7 +33,7 @@ echo "Job array task id ${SLURM_ARRAY_TASK_ID}"
 echo "Running on ${SLURM_JOB_NODELIST}"
 echo "With cuda device ${CUDA_VISIBLE_DEVICES}"
 echo "Input file is ${input_file}"
-echo "Output file will be ${output_file_final}"
+echo "Output file will be ${output_file}"
 
 cd /home/awilkins/larnd_infill/larnd_infill
 source setups/setup.sh
@@ -45,7 +45,7 @@ python run_infill.py --input_file $input_file \
 
 if [[ $? == 0 ]]
 then
-  cp ${SCRATCH_DIR}/${output_name} ${OUTPUT_DIR}/${output_name}
+  cp ${output_file} ${OUTPUT_DIR}/${output_name}
 else
   echo "Python script exited badly! not copying $output_name to $OUTPUT_DIR"
 fi
