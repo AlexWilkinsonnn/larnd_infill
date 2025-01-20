@@ -13,8 +13,14 @@ from ME.config_parsers.parser_train import get_config
 from ME.dataset import LarndDataset, CollateCOO
 from ME.models.completion_net_adversarial import CompletionNetAdversarial
 
-# FIGSIZE=(8, 4.5) # For mask plots
-FIGSIZE=(5, 5) # For reflection plots
+# For mask plots
+# FIGSIZE=(8, 4.5)
+# FONTSIZE=13
+# LABELSIZE=10
+# For reflection plots
+FIGSIZE=(6, 5)
+FONTSIZE=13
+LABELSIZE=10
 
 def main(args):
     conf = get_config(args.config)
@@ -128,7 +134,7 @@ def plot_a_thing(
                 coords_sigmask_gap_packed[1].append(coord[1].item())
                 coords_sigmask_gap_packed[2].append(coord[2].item())
 
-        fig, ax = plt.subplots(1, 1, figsize=(8, 4.5))
+        fig, ax = plt.subplots(1, 1, figsize=FIGSIZE)
 
         norm_feats = matplotlib.colors.Normalize(vmin=0, vmax=max(feats_list_target))
         m_feats = matplotlib.cm.ScalarMappable(norm=norm_feats, cmap=matplotlib.cm.cividis)
@@ -212,19 +218,25 @@ def plot_a_thing(
         max_z = detector.tpc_borders[0][2][0]
         min_z = detector.tpc_borders[-1][2][0]
         # XXX Edit these manually
-        # For mask plot of iter5 batch5
+        # For mask, iter5 batch5
         # min_x, max_x = 580, 730
         # min_z, max_z = -60, 100
         # For reflections, iter8 batch3
-        min_x, max_x = 492, 545 
-        min_z, max_z = -50, -135
+        # min_x, max_x = 492, 545 
+        # min_z, max_z = -50, -135
+        # For reflections, iter0 batch5
+        # min_x, max_x = 530, 610 
+        # min_z, max_z = -55, -115
+        # For reflections, iter10 batch5
+        # min_x, max_x = 630, 780 
+        # min_z, max_z = 130, 180
 
         ax.set_xlim(min_x, max_x)
         ax.set_ylim(min_z, max_z)
-        ax.set_xlabel("x (cm)", fontsize=13)
-        ax.set_ylabel("z (cm)", fontsize=13)
-        ax.xaxis.set_tick_params(labelsize=10)
-        ax.yaxis.set_tick_params(labelsize=10)
+        ax.set_xlabel("x (cm)", fontsize=FONTSIZE)
+        ax.set_ylabel("z (cm)", fontsize=FONTSIZE)
+        ax.xaxis.set_tick_params(labelsize=LABELSIZE)
+        ax.yaxis.set_tick_params(labelsize=LABELSIZE)
 
         plt.savefig(
             os.path.join(save_dir, f"{save_name_prefix}_batch{i_batch}_{save_name_suffix}.pdf"),
