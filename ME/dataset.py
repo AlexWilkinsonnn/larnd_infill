@@ -343,14 +343,14 @@ class LarndDataset(torch.utils.data.Dataset):
         # Make reflections of tracks into x gaps
         self._reflect_into_x_gaps(
             coordsxyz_feats,
-            x_gap_pos_rflct_coord, x_gap_neg_rflct_coord, x_gaps_set,
+            x_gap_pos_rflct_coord, x_gap_neg_rflct_coord, x_gaps_set, z_gaps_set,
             infill_coords
         )
 
         # Make reflections of tracks into z gaps
         self._reflect_into_z_gaps(
             coordszxy_feats,
-            z_gap_pos_rflct_coord, z_gap_neg_rflct_coord, z_gaps_set,
+            z_gap_pos_rflct_coord, z_gap_neg_rflct_coord, z_gaps_set, x_gaps_set,
             3,
             infill_coords
         )
@@ -488,7 +488,7 @@ class LarndDataset(torch.utils.data.Dataset):
     def _reflect_into_x_gaps(
         self,
         coordsxyz_feats,
-        x_gap_pos_rflct_coord, x_gap_neg_rflct_coord, x_gaps_set,
+        x_gap_pos_rflct_coord, x_gap_neg_rflct_coord, x_gaps_set, z_gaps_set,
         infill_coords
     ):
         for coord_x, coordsyz_feats in coordsxyz_feats.items():
@@ -506,13 +506,18 @@ class LarndDataset(torch.utils.data.Dataset):
 
                 for coord_y, coordsz_feats in coordsxyz_feats[reflect_x].items():
                     for coord_z in coordsz_feats:
+                        if coord_z in z_gaps_set:
+                            continue
                         reflect_y, reflect_z = coord_y, coord_z
 
                         for coord_y, coordsz_feats in coordsyz_feats.items():
                             if abs(coord_y - reflect_y) > y_max_reflect_dist:
                                 continue
                             for coord_z in coordsz_feats:
-                                if abs(coord_z - reflect_z) > z_max_reflect_dist:
+                                if (
+                                    coord_z in z_gaps_set or
+                                    abs(coord_z - reflect_z) > z_max_reflect_dist
+                                ):
                                     continue
                                 infill_coords.add(
                                     (
@@ -536,13 +541,18 @@ class LarndDataset(torch.utils.data.Dataset):
 
                 for coord_y, coordsz_feats in coordsxyz_feats[reflect_x].items():
                     for coord_z in coordsz_feats:
+                        if coord_z in z_gaps_set:
+                            continue
                         reflect_y, reflect_z = coord_y, coord_z
 
                         for coord_y, coordsz_feats in coordsyz_feats.items():
                             if abs(coord_y - reflect_y) > y_max_reflect_dist:
                                 continue
                             for coord_z in coordsz_feats:
-                                if abs(coord_z - reflect_z) > z_max_reflect_dist:
+                                if (
+                                    coord_z in z_gaps_set or
+                                    abs(coord_z - reflect_z) > z_max_reflect_dist
+                                ):
                                     continue
                                 infill_coords.add(
                                     (
@@ -555,7 +565,7 @@ class LarndDataset(torch.utils.data.Dataset):
     def _reflect_into_z_gaps(
         self,
         coordszxy_feats,
-        z_gap_pos_rflct_coord, z_gap_neg_rflct_coord, z_gaps_set,
+        z_gap_pos_rflct_coord, z_gap_neg_rflct_coord, z_gaps_set, x_gaps_set,
         wiggle,
         infill_coords
     ):
@@ -574,11 +584,16 @@ class LarndDataset(torch.utils.data.Dataset):
                     y_max_reflect_dist = self.y_max_reflect_dist * dist_to_reflect_z
 
                     for coord_x, coordsy_feats in coordszxy_feats[reflect_z].items():
+                        if coord_x in x_gaps_set:
+                            continue
                         for coord_y in coordsy_feats:
                             reflect_x, reflect_y = coord_x, coord_y
 
                             for coord_x, coordsy_feats in coordsxy_feats.items():
-                                if abs(coord_x - reflect_x) > x_max_reflect_dist:
+                                if (
+                                    coord_x in x_gaps_set or
+                                    abs(coord_x - reflect_x) > x_max_reflect_dist
+                                ):
                                     continue
                                 for coord_y in coordsy_feats:
                                     if abs(coord_y - reflect_y) > y_max_reflect_dist:
@@ -605,11 +620,16 @@ class LarndDataset(torch.utils.data.Dataset):
                     y_max_reflect_dist = self.y_max_reflect_dist * dist_to_reflect_z
 
                     for coord_x, coordsy_feats in coordszxy_feats[reflect_z].items():
+                        if coord_x in x_gaps_set:
+                            continue
                         for coord_y in coordsy_feats:
                             reflect_x, reflect_y = coord_x, coord_y
 
                             for coord_x, coordsy_feats in coordsxy_feats.items():
-                                if abs(coord_x - reflect_x) > x_max_reflect_dist:
+                                if (
+                                    coord_x in x_gaps_set or 
+                                    abs(coord_x - reflect_x) > x_max_reflect_dist
+                                ):
                                     continue
                                 for coord_y in coordsy_feats:
                                     if abs(coord_y - reflect_y) > y_max_reflect_dist:
@@ -644,8 +664,12 @@ class LarndDataset(torch.utils.data.Dataset):
                             signal_mask_active.add(coord)
 
         for coord_x, coordsyz_feats in coordsxyz_feats.items():
+            if coord_x in x_gaps_set: # XXX I am missing these lines in the main branch, probably fucked myself as this would be
+                continue              # encouraging the model to infill wherever there is isolated mask
             for coord_y, coordsz_feats in coordsyz_feats.items():
                 for coord_z in coordsz_feats:
+                    if coord_z in z_gaps_set: # XXX
+                        continue
                     for shift_x in range(*x_smear_active):
                         for shift_y in range(*y_smear_active):
                             for shift_z in range(*z_smear_active):
