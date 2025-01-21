@@ -40,9 +40,11 @@ def main(args):
         conf.vmap,
         conf.n_feats_in, conf.n_feats_out,
         conf.scalefactors,
-        ((-1, 2), (-1, 2), (-3, 4)),# conf.xyz_smear_infill, conf.xyz_smear_active,
-        ((-6, 7), (-6, 7), (-6, 7)),# conf.xyz_smear_infill, conf.xyz_smear_active,
-        [30, 30, 120], # conf.xyz_max_reflect_distance,
+        # ((-1, 2), (-1, 2), (-3, 4)),# conf.xyz_smear_infill,
+        # ((-6, 7), (-6, 7), (-6, 7)),# conf.xyz_smear_active,
+        # [30, 30, 120], # conf.xyz_max_reflect_distance,
+        conf.xyz_smear_infill, conf.xyz_smear_active,
+        conf.xyz_max_reflect_distance,
         max_dataset_size=0,
         seed=1
     )
