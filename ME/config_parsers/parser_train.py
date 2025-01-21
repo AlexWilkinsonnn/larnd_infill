@@ -120,9 +120,11 @@ def get_config(conf_file, overwrite_dict={}, prep_checkpoint_dir=True):
 
     conf_dict["train_data_path"] = os.path.join(conf_dict["data_path"], "train")
     conf_dict["valid_data_path"] = os.path.join(conf_dict["data_path"], "valid")
+    conf_dict["test_data_path"] = os.path.join(conf_dict["data_path"], "test")
     if (
         not os.path.exists(conf_dict["train_data_path"]) or
-        not os.path.exists(conf_dict["valid_data_path"])
+        not os.path.exists(conf_dict["valid_data_path"]) or
+        not os.path.exists(conf_dict["test_data_path"])
     ):
         raise ValueError("train and/or valid subdirs are not in data_path!")
     del conf_dict["data_path"]
