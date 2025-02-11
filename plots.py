@@ -39,27 +39,29 @@ def main(args):
     collate_fn = CollateCOO(
         coord_feat_pairs=(("input_coords", "input_feats"), ("target_coords", "target_feats"))
     )
-    dataset_valid = LarndDataset(
-        conf.valid_data_path,
+    dataset = LarndDataset(
+        conf.test_data_path if args.use_test_data else conf.valid_data_path,
         conf.data_prep_type,
         conf.vmap,
         conf.n_feats_in, conf.n_feats_out,
         conf.scalefactors,
         conf.xyz_smear_infill, conf.xyz_smear_active,
         conf.xyz_max_reflect_distance,
-        max_dataset_size=conf.max_valid_dataset_size,
+        max_dataset_size=-1 if args.use_test_data else conf.max_valid_dataset_size,
         seed=1
     )
-    dataloader_valid = torch.utils.data.DataLoader(
-        dataset_valid,
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
         batch_size=conf.batch_size,
         collate_fn=collate_fn,
         num_workers=0,
         shuffle=False
     )
+    if args.use_true_gaps:
+        dataloader.dataset.set_use_true_gaps(True)
 
-    if args.mask or args.reflections:
-        for i_data, data in tqdm(enumerate(dataloader_valid), desc="Val Loop"):
+    if args.mask or args.reflections or args.preds:
+        for i_data, data in tqdm(enumerate(dataloader), desc="Val Loop"):
             if i_data < args.n_skip:
                 continue
             if i_data >= args.n:
@@ -94,10 +96,30 @@ def main(args):
                     show_reflections=True
                 )
 
+            if args.preds:
+                plot_a_thing(
+                    vis["s_pred"], vis["s_in"], vis["s_target"],
+                    data,
+                    conf.vmap,
+                    conf.scalefactors,
+                    "iter{}-valid".format(i_data), "pred",
+                    conf.detector,
+                    save_dir=os.path.join(conf.checkpoint_dir, "thesis_plots"),
+                    show_preds=True
+                )
+
 
 def plot_a_thing(
-    s_pred, s_in, s_target, data, vmap, scalefactors, save_name_prefix, save_name_suffix, detector,
-    max_evs=6, save_dir="test/", z_scalefactor=1, show_mask=False, show_reflections=False
+    s_pred, s_in, s_target,
+    data,
+    vmap,
+    scalefactors,
+    save_name_prefix, save_name_suffix,
+    detector,
+    max_evs=6,
+    save_dir="test/",
+    z_scalefactor=1,
+    show_mask=False, show_reflections=False, show_preds=False
 ):
     x_vmap, z_vmap = vmap["x"], vmap["z"]
 
@@ -120,12 +142,25 @@ def plot_a_thing(
         coords_in, feats_in = coords_in.cpu(), feats_in.cpu()
         x_gaps, z_gaps = data["mask_x"][i_batch], data["mask_z"][i_batch]
 
-        coords_target_packed, feats_list_target = [[], [], []], []
+        coords_packed, feats_list = [[], [], []], []
         for coord, feat in zip(coords_target, feats_target):
-            coords_target_packed[0].append(coord[0].item())
-            coords_target_packed[1].append(coord[1].item())
-            coords_target_packed[2].append(coord[2].item())
-            feats_list_target.append(int(feat.item()))
+            if show_preds and (coord[0].item() in x_gaps or coord[2].item() in z_gaps):
+                continue
+            coords_packed[0].append(coord[0].item())
+            coords_packed[1].append(coord[1].item())
+            coords_packed[2].append(coord[2].item())
+            feats_list.append(int(feat.item()))
+        if show_preds:
+            coords_pred, feats_pred = (
+                coords_pred.cpu(), feats_pred.cpu() * (1 / scalefactors[0])
+            )
+            for coord, feat in zip(coords_pred, feats_pred):
+                if coord[0].item() not in x_gaps and coord[2].item() not in z_gaps:
+                    continue
+                coords_packed[0].append(coord[0].item())
+                coords_packed[1].append(coord[1].item())
+                coords_packed[2].append(coord[2].item())
+                feats_list.append(int(feat.item()))
 
         coords_sigmask_gap_packed = [[], [], []]
         for coord, feat in zip(coords_in, feats_in):
@@ -136,7 +171,7 @@ def plot_a_thing(
 
         fig, ax = plt.subplots(1, 1, figsize=FIGSIZE)
 
-        norm_feats = matplotlib.colors.Normalize(vmin=0, vmax=max(feats_list_target))
+        norm_feats = matplotlib.colors.Normalize(vmin=0, vmax=max(feats_list))
         m_feats = matplotlib.cm.ScalarMappable(norm=norm_feats, cmap=matplotlib.cm.cividis)
 
         # Draw shaded regions for mask and inactive volumes
@@ -177,7 +212,7 @@ def plot_a_thing(
 
         # Draw packets
         curr_patches_xz = set()
-        for coord_x, coord_y, coord_z, feat in zip(*coords_target_packed, feats_list_target):
+        for coord_x, coord_y, coord_z, feat in zip(*coords_packed, feats_list):
             x_bin = x_vmap[coord_x]
             x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
             z_bin = z_vmap[coord_z]
@@ -222,14 +257,32 @@ def plot_a_thing(
         # min_x, max_x = 580, 730
         # min_z, max_z = -60, 100
         # For reflections, iter8 batch3
-        # min_x, max_x = 492, 545 
+        # min_x, max_x = 492, 545
         # min_z, max_z = -50, -135
         # For reflections, iter0 batch5
-        # min_x, max_x = 530, 610 
+        # min_x, max_x = 530, 610
         # min_z, max_z = -55, -115
         # For reflections, iter10 batch5
-        # min_x, max_x = 630, 780 
+        # min_x, max_x = 630, 780
         # min_z, max_z = 130, 180
+        # For dummy_edep_fixz_fixy pred true gaps, iter0 batch2
+        # min_x, max_x = 590, 640
+        # min_z, max_z = 260, 290
+        # For dummy_edep_fixz pred true gaps, iter0 batch4
+        # min_x, max_x = 595, 645
+        # min_z, max_z = 190, 230
+        # For dummy_edep pred true gaps, iter0 batch0
+        # min_x, max_x = 790, 840
+        # min_z, max_z = 20, 70
+        # For gps_single_muon pred true gaps, iter0 batch2
+        # min_x, max_x = 650, 750
+        # min_z, max_z = 0, 100
+        # For gps_single_muon pred true gaps, iter4 batch3
+        # min_x, max_x = 485, 550
+        # min_z, max_z = -150, -85
+        # For gps_multi_muon pred true gaps, iter16 batch1
+        # min_x, max_x = 470, 550
+        # min_z, max_z = 80, 180
 
         ax.set_xlim(min_x, max_x)
         ax.set_ylim(min_z, max_z)
@@ -253,6 +306,9 @@ def parse_arguments():
     parser.add_argument("--n_skip", type=int, default=0)
     parser.add_argument("--mask", action="store_true")
     parser.add_argument("--reflections", action="store_true")
+    parser.add_argument("--preds", action="store_true")
+    parser.add_argument("--use_true_gaps", action="store_true")
+    parser.add_argument("--use_test_data", action="store_true")
 
     args = parser.parse_args()
 
