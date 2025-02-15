@@ -5,6 +5,7 @@ import argparse, os
 
 from tqdm import tqdm
 from matplotlib import pyplot as plt; import matplotlib
+import numpy as np
 
 import torch;
 import MinkowskiEngine as ME
@@ -47,7 +48,7 @@ def main(args):
         conf.scalefactors,
         conf.xyz_smear_infill, conf.xyz_smear_active,
         conf.xyz_max_reflect_distance,
-        max_dataset_size=-1 if args.use_test_data else conf.max_valid_dataset_size,
+        max_dataset_size=0 if args.use_test_data else conf.max_valid_dataset_size,
         seed=1
     )
     dataloader = torch.utils.data.DataLoader(
@@ -81,6 +82,7 @@ def main(args):
                     "iter{}-valid".format(i_data), "masking",
                     conf.detector,
                     save_dir=os.path.join(conf.checkpoint_dir, "thesis_plots"),
+                    packet_draw_min=args.packet_draw_min,
                     show_mask=True
                 )
 
@@ -93,6 +95,7 @@ def main(args):
                     "iter{}-valid".format(i_data), "reflections",
                     conf.detector,
                     save_dir=os.path.join(conf.checkpoint_dir, "thesis_plots"),
+                    packet_draw_min=args.packet_draw_min,
                     show_reflections=True
                 )
 
@@ -105,9 +108,31 @@ def main(args):
                     "iter{}-valid".format(i_data), "pred",
                     conf.detector,
                     save_dir=os.path.join(conf.checkpoint_dir, "thesis_plots"),
+                    packet_draw_min=args.packet_draw_min,
                     show_preds=True
                 )
 
+    if args.occupancy_metrics or args.summed_adc_metrics:
+        purities, completenesses = [], []
+
+        for i_data, data in tqdm(enumerate(dataloader), desc="Val Loop"):
+            model.set_input(data)
+            model.test(compute_losses=False)
+
+            vis = model.get_current_visuals()
+
+            batch_purities, batch_completenesses = calc_occupancy_metrics(
+                vis["s_in"], vis["s_pred"], vis["s_target"],
+                data["mask_x"], data["mask_z"],
+                conf.scalefactors
+            )
+            for purity in batch_purities:
+                purities.append(purity)
+            for completeness in batch_completenesses:
+                completenesses.append(completeness)
+
+        print(f"Mean purity: {np.mean(purities)}")
+        print(f"Mean completeness: {np.mean(completenesses)}")
 
 def plot_a_thing(
     s_pred, s_in, s_target,
@@ -119,6 +144,7 @@ def plot_a_thing(
     max_evs=6,
     save_dir="test/",
     z_scalefactor=1,
+    packet_draw_min=0,
     show_mask=False, show_reflections=False, show_preds=False
 ):
     x_vmap, z_vmap = vmap["x"], vmap["z"]
@@ -213,6 +239,8 @@ def plot_a_thing(
         # Draw packets
         curr_patches_xz = set()
         for coord_x, coord_y, coord_z, feat in zip(*coords_packed, feats_list):
+            if feat < packet_draw_min:
+                continue
             x_bin = x_vmap[coord_x]
             x_size, x_pos = x_bin[1] - x_bin[0], x_bin[0]
             z_bin = z_vmap[coord_z]
@@ -283,6 +311,15 @@ def plot_a_thing(
         # For gps_multi_muon pred true gaps, iter16 batch1
         # min_x, max_x = 470, 550
         # min_z, max_z = 80, 180
+        # For gps_muon_showers pred true gaps, iter13 batch3
+        # min_x, max_x = 520, 650
+        # min_z, max_z = -10, 130
+        # For nu pred true gaps, iter14 batch5
+        # min_x, max_x = 710, 860
+        # min_z, max_z = -95, 0
+        # For nu pred true gaps, iter19 batch2
+        # min_x, max_x = 555, 690
+        # min_z, max_z = 180, 250
 
         ax.set_xlim(min_x, max_x)
         ax.set_ylim(min_z, max_z)
@@ -297,6 +334,76 @@ def plot_a_thing(
         )
         plt.close()
 
+def calc_occupancy_metrics(s_in, s_pred, s_target, x_masks, z_masks, scalefactors):
+    adc_thres = 4 * scalefactors[0]
+
+    purities, completenesses = [], []
+
+    for i_batch, (coords_pred, feats_pred, coords_target, feats_target) in enumerate(
+        zip(
+            *s_pred.decomposed_coordinates_and_features,
+            *s_target.decomposed_coordinates_and_features
+        )
+    ):
+        # Purity
+        pos, total = 0, 0
+        for coord, feat in zip(coords_target, feats_target):
+            if (
+                (coord[0].item() not in x_masks[i_batch] and coord[2].item() not in z_masks[i_batch]) or
+                feat.item() < adc_thres
+            ):
+                continue
+
+            coord_idx = torch.zeros(1, 4)
+            coord_idx[0, 1:] = coord
+            coord_idx[0, 0] = i_batch
+            coord_idx = coord_idx.type(torch.float).to(coord.device)
+
+            feat_in = s_in.features_at_coordinates(coord_idx)
+            if feat_in[0, -1].item() != 1:
+                continue
+
+            total += 1
+
+            feat_pred = s_pred.features_at_coordinates(coord_idx)
+            if feat_pred.item() > adc_thres:
+                pos += 1
+
+        purities.append(pos / total if total != 0 else 1.0)
+
+        # Completeness
+        pos, total = 0, 0
+        for coord, feat in zip(coords_pred, feats_pred):
+            if (
+                (coord[0].item() not in x_masks[i_batch] and coord[2].item() not in z_masks[i_batch]) or
+                feat.item() < adc_thres
+            ):
+                continue
+
+            total += 1
+
+            coord_idx = torch.zeros(1, 4)
+            coord_idx[0, 1:] = coord
+            coord_idx[0, 0] = i_batch
+            coord_idx = coord_idx.type(torch.float).to(coord.device)
+
+            feat_target = s_target.features_at_coordinates(coord_idx)
+            if feat_target.item() > adc_thres:
+                pos += 1
+
+        completenesses.append(pos / total if total != 0 else 1.0)
+
+    return purities, completenesses
+
+def calc_summed_adc(s_pred, s_target, scalefactors):
+    s_pred_unscaled = ME.SparseTensor(
+        coordinates=s_pred.C, features=s_pred.F * (1 / scalefactors[0])
+    )
+    s_target_unscaled = ME.SparseTensor(
+        coordinates=s_pred.C, features=s_pred.F * (1 / scalefactors[0])
+    )
+    pass
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
@@ -307,8 +414,11 @@ def parse_arguments():
     parser.add_argument("--mask", action="store_true")
     parser.add_argument("--reflections", action="store_true")
     parser.add_argument("--preds", action="store_true")
+    parser.add_argument("--occupancy_metrics", action="store_true")
+    parser.add_argument("--summed_adc_metrics", action="store_true")
     parser.add_argument("--use_true_gaps", action="store_true")
     parser.add_argument("--use_test_data", action="store_true")
+    parser.add_argument("--packet_draw_min", default=0, type=int)
 
     args = parser.parse_args()
 
