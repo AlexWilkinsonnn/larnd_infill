@@ -335,7 +335,7 @@ def plot_a_thing(
         plt.close()
 
 def calc_occupancy_metrics(s_in, s_pred, s_target, x_masks, z_masks, scalefactors):
-    adc_thres = 4 * scalefactors[0]
+    adc_thres = 0.001 * scalefactors[0]
 
     purities, completenesses = [], []
 
@@ -345,8 +345,35 @@ def calc_occupancy_metrics(s_in, s_pred, s_target, x_masks, z_masks, scalefactor
             *s_target.decomposed_coordinates_and_features
         )
     ):
-        # Purity
-        pos, total = 0, 0
+        # True positive: pred voxel at true voxel
+        # True negative: empty pred voxel at true empty voxel
+        # False positive: pred voxel at true empty voxel
+        # False negative: empty pred voxel at true voxel
+        # purity = precision = TP / (TP + FP)
+        # completeness = recall = TP / (TP + FN)
+
+        # TP and FP
+        TP, FP = 0, 0
+        for coord, feat in zip(coords_pred, feats_pred):
+            if (
+                (coord[0].item() not in x_masks[i_batch] and coord[2].item() not in z_masks[i_batch]) or
+                feat.item() < adc_thres
+            ):
+                continue
+
+            coord_idx = torch.zeros(1, 4)
+            coord_idx[0, 1:] = coord
+            coord_idx[0, 0] = i_batch
+            coord_idx = coord_idx.type(torch.float).to(coord.device)
+
+            feat_target = s_target.features_at_coordinates(coord_idx)
+            if feat_target.item() > adc_thres:
+                TP += 1
+            else:
+                FP += 1
+
+        # FN
+        FN = 0
         for coord, feat in zip(coords_target, feats_target):
             if (
                 (coord[0].item() not in x_masks[i_batch] and coord[2].item() not in z_masks[i_batch]) or
@@ -359,39 +386,62 @@ def calc_occupancy_metrics(s_in, s_pred, s_target, x_masks, z_masks, scalefactor
             coord_idx[0, 0] = i_batch
             coord_idx = coord_idx.type(torch.float).to(coord.device)
 
-            feat_in = s_in.features_at_coordinates(coord_idx)
-            if feat_in[0, -1].item() != 1:
-                continue
-
-            total += 1
-
+            feat_input = s_in.features_at_coordinates(coord_idx)
             feat_pred = s_pred.features_at_coordinates(coord_idx)
-            if feat_pred.item() > adc_thres:
-                pos += 1
+            # If coord could've been predicted (in reflections) and wasn't
+            if feat_input[0, -1].item() == 1 and feat_pred.item() < adc_thres:
+                FN += 1
 
-        purities.append(pos / total if total != 0 else 1.0)
+        purities.append(TP / (TP + FP) if (TP + FP) != 0 else 1.0)
+        completenesses.append(TP / (TP + FN) if (TP + FN) != 0 else 1.0)
 
-        # Completeness
-        pos, total = 0, 0
-        for coord, feat in zip(coords_pred, feats_pred):
-            if (
-                (coord[0].item() not in x_masks[i_batch] and coord[2].item() not in z_masks[i_batch]) or
-                feat.item() < adc_thres
-            ):
-                continue
+        # Purity
+        # pos, total = 0, 0
+        # for coord, feat in zip(coords_target, feats_target):
+        #     if (
+        #         (coord[0].item() not in x_masks[i_batch] and coord[2].item() not in z_masks[i_batch]) or
+        #         feat.item() < adc_thres
+        #     ):
+        #         continue
 
-            total += 1
+        #     coord_idx = torch.zeros(1, 4)
+        #     coord_idx[0, 1:] = coord
+        #     coord_idx[0, 0] = i_batch
+        #     coord_idx = coord_idx.type(torch.float).to(coord.device)
 
-            coord_idx = torch.zeros(1, 4)
-            coord_idx[0, 1:] = coord
-            coord_idx[0, 0] = i_batch
-            coord_idx = coord_idx.type(torch.float).to(coord.device)
+        #     feat_in = s_in.features_at_coordinates(coord_idx)
+        #     if feat_in[0, -1].item() != 1:
+        #         continue
 
-            feat_target = s_target.features_at_coordinates(coord_idx)
-            if feat_target.item() > adc_thres:
-                pos += 1
+        #     total += 1
 
-        completenesses.append(pos / total if total != 0 else 1.0)
+        #     feat_pred = s_pred.features_at_coordinates(coord_idx)
+        #     if feat_pred.item() > adc_thres:
+        #         pos += 1
+
+        # purities.append(pos / total if total != 0 else 1.0)
+
+        # # Completeness
+        # pos, total = 0, 0
+        # for coord, feat in zip(coords_pred, feats_pred):
+        #     if (
+        #         (coord[0].item() not in x_masks[i_batch] and coord[2].item() not in z_masks[i_batch]) or
+        #         feat.item() < adc_thres
+        #     ):
+        #         continue
+
+        #     total += 1
+
+        #     coord_idx = torch.zeros(1, 4)
+        #     coord_idx[0, 1:] = coord
+        #     coord_idx[0, 0] = i_batch
+        #     coord_idx = coord_idx.type(torch.float).to(coord.device)
+
+        #     feat_target = s_target.features_at_coordinates(coord_idx)
+        #     if feat_target.item() > adc_thres:
+        #         pos += 1
+
+        # completenesses.append(pos / total if total != 0 else 1.0)
 
     return purities, completenesses
 
