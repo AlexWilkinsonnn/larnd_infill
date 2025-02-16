@@ -55,7 +55,7 @@ def main(args):
         dataset,
         batch_size=conf.batch_size,
         collate_fn=collate_fn,
-        num_workers=0,
+        num_workers=conf.max_num_workers if args.use_test_data else 0,
         shuffle=False
     )
     if args.use_true_gaps:
@@ -115,24 +115,62 @@ def main(args):
     if args.occupancy_metrics or args.summed_adc_metrics:
         purities, completenesses = [], []
 
+        gap_x_summed_pred_adcs, gap_x_summed_target_adcs = [], []
+        gap_z_summed_pred_adcs, gap_z_summed_target_adcs = [], []
+
         for i_data, data in tqdm(enumerate(dataloader), desc="Val Loop"):
             model.set_input(data)
             model.test(compute_losses=False)
 
             vis = model.get_current_visuals()
 
-            batch_purities, batch_completenesses = calc_occupancy_metrics(
-                vis["s_in"], vis["s_pred"], vis["s_target"],
-                data["mask_x"], data["mask_z"],
-                conf.scalefactors
-            )
-            for purity in batch_purities:
-                purities.append(purity)
-            for completeness in batch_completenesses:
-                completenesses.append(completeness)
+            if args.occupancy_metrics:
+                batch_purities, batch_completenesses = calc_occupancy_metrics(
+                    vis["s_in"], vis["s_pred"], vis["s_target"],
+                    data["mask_x"], data["mask_z"],
+                    conf.scalefactors
+                )
+                for purity in batch_purities:
+                    purities.append(purity)
+                for completeness in batch_completenesses:
+                    completenesses.append(completeness)
 
-        print(f"Mean purity: {np.mean(purities)}")
-        print(f"Mean completeness: {np.mean(completenesses)}")
+            if args.summed_adc_metrics:
+                gap_x_pred, gap_x_target, gap_z_pred, gap_z_target = get_summed_adc_metrics(
+                    vis["s_in"], vis["s_pred"], vis["s_target"],
+                    data["mask_x"], data["mask_z"],
+                    conf.scalefactors
+                )
+                for val in gap_x_pred:
+                    gap_x_summed_pred_adcs.append(val)
+                for val in gap_x_target:
+                    gap_x_summed_target_adcs.append(val)
+                for val in gap_z_pred:
+                    gap_z_summed_pred_adcs.append(val)
+                for val in gap_z_target:
+                    gap_z_summed_target_adcs.append(val)
+        
+        if args.occupancy_metrics:
+            print(f"Mean purity: {np.mean(purities)}")
+            print(f"Mean completeness: {np.mean(completenesses)}")
+
+        if args.summed_adc_metrics:
+            gap_x_summed_pred_adcs = np.array(gap_x_summed_pred_adcs)
+            gap_x_summed_target_adcs = np.array(gap_x_summed_target_adcs)
+            gap_z_summed_pred_adcs = np.array(gap_z_summed_pred_adcs)
+            gap_z_summed_target_adcs = np.array(gap_z_summed_target_adcs)
+
+            # mask = (gap_x_summed_target_adcs != 0)
+            # print("x:")
+            # print(np.mean((gap_x_summed_pred_adcs[mask] - gap_x_summed_target_adcs[mask]) / gap_x_summed_target_adcs[mask]))
+            # mask = (gap_z_summed_target_adcs != 0)
+            # print("z:")
+            # print(np.mean((gap_z_summed_pred_adcs[mask] - gap_z_summed_target_adcs[mask]) / gap_z_summed_target_adcs[mask]))
+
+            np.save("gap_x_summed_pred_adcs.npy", gap_x_summed_pred_adcs)
+            np.save("gap_x_summed_target_adcs.npy", gap_x_summed_target_adcs)
+            np.save("gap_z_summed_pred_adcs.npy", gap_z_summed_pred_adcs)
+            np.save("gap_z_summed_target_adcs.npy", gap_z_summed_target_adcs)
 
 def plot_a_thing(
     s_pred, s_in, s_target,
@@ -395,64 +433,75 @@ def calc_occupancy_metrics(s_in, s_pred, s_target, x_masks, z_masks, scalefactor
         purities.append(TP / (TP + FP) if (TP + FP) != 0 else 1.0)
         completenesses.append(TP / (TP + FN) if (TP + FN) != 0 else 1.0)
 
-        # Purity
-        # pos, total = 0, 0
-        # for coord, feat in zip(coords_target, feats_target):
-        #     if (
-        #         (coord[0].item() not in x_masks[i_batch] and coord[2].item() not in z_masks[i_batch]) or
-        #         feat.item() < adc_thres
-        #     ):
-        #         continue
-
-        #     coord_idx = torch.zeros(1, 4)
-        #     coord_idx[0, 1:] = coord
-        #     coord_idx[0, 0] = i_batch
-        #     coord_idx = coord_idx.type(torch.float).to(coord.device)
-
-        #     feat_in = s_in.features_at_coordinates(coord_idx)
-        #     if feat_in[0, -1].item() != 1:
-        #         continue
-
-        #     total += 1
-
-        #     feat_pred = s_pred.features_at_coordinates(coord_idx)
-        #     if feat_pred.item() > adc_thres:
-        #         pos += 1
-
-        # purities.append(pos / total if total != 0 else 1.0)
-
-        # # Completeness
-        # pos, total = 0, 0
-        # for coord, feat in zip(coords_pred, feats_pred):
-        #     if (
-        #         (coord[0].item() not in x_masks[i_batch] and coord[2].item() not in z_masks[i_batch]) or
-        #         feat.item() < adc_thres
-        #     ):
-        #         continue
-
-        #     total += 1
-
-        #     coord_idx = torch.zeros(1, 4)
-        #     coord_idx[0, 1:] = coord
-        #     coord_idx[0, 0] = i_batch
-        #     coord_idx = coord_idx.type(torch.float).to(coord.device)
-
-        #     feat_target = s_target.features_at_coordinates(coord_idx)
-        #     if feat_target.item() > adc_thres:
-        #         pos += 1
-
-        # completenesses.append(pos / total if total != 0 else 1.0)
-
     return purities, completenesses
 
-def calc_summed_adc(s_pred, s_target, scalefactors):
-    s_pred_unscaled = ME.SparseTensor(
-        coordinates=s_pred.C, features=s_pred.F * (1 / scalefactors[0])
-    )
-    s_target_unscaled = ME.SparseTensor(
-        coordinates=s_pred.C, features=s_pred.F * (1 / scalefactors[0])
-    )
-    pass
+def get_summed_adc_metrics(s_in, s_pred, s_target, x_gaps, z_gaps, scalefactors):
+    gap_x_summed_pred_adcs, gap_x_summed_target_adcs = [], []
+    gap_z_summed_pred_adcs, gap_z_summed_target_adcs = [], []
+
+    s_in_infill_mask = s_in.F[:, -1] == 1
+    infill_coords = s_in.C[s_in_infill_mask].type(torch.float)
+
+    s_pred = ME.SparseTensor(coordinates=s_pred.C, features=s_pred.F * (1 / scalefactors[0]))
+    s_target = ME.SparseTensor(coordinates=s_target.C, features=s_target.F * (1 / scalefactors[0]))
+
+    for i_batch, (coords_pred, feats_pred, coords_target, feats_target) in enumerate(
+        zip(
+            *s_pred.decomposed_coordinates_and_features,
+            *s_target.decomposed_coordinates_and_features
+        )
+    ):
+        batch_infill_coords = infill_coords[infill_coords[:, 0] == i_batch]
+
+        for coord_idx in (1, 3): # x and z gaps
+            if coord_idx == 1:
+                gaps = set(x_gaps[i_batch])
+            elif coord_idx == 3:
+                gaps = set(z_gaps[i_batch])
+
+            active_gap_coords = [
+                int(gap_coord)
+                for gap_coord in torch.unique(batch_infill_coords[:, coord_idx]).tolist()
+                    if int(gap_coord) in gaps
+            ]
+            if not active_gap_coords:
+                continue
+            gap_ranges = _get_edge_ranges(active_gap_coords)
+
+            for gap_start, gap_end in gap_ranges:
+                gap_mask = sum(
+                    batch_infill_coords[:, coord_idx] == gap_coord
+                    for gap_coord in range(gap_start, gap_end + 1)
+                )
+                gap_coords = batch_infill_coords[gap_mask.type(torch.bool)]
+
+                if coord_idx == 1:
+                    gap_x_summed_pred_adcs.append(
+                        s_pred.features_at_coordinates(gap_coords).squeeze().sum().item()
+                    )
+                    gap_x_summed_target_adcs.append(
+                        s_target.features_at_coordinates(gap_coords).squeeze().sum().item()
+                    )
+                    # print(f"{gap_x_summed_pred_adcs[-1]} -- {gap_x_summed_target_adcs[-1]}")
+                elif coord_idx == 3:
+                    gap_z_summed_pred_adcs.append(
+                        s_pred.features_at_coordinates(gap_coords).squeeze().sum().item()
+                    )
+                    gap_z_summed_target_adcs.append(
+                        s_target.features_at_coordinates(gap_coords).squeeze().sum().item()
+                    )
+                    # print(f"{gap_z_summed_pred_adcs[-1]} -- {gap_z_summed_target_adcs[-1]}")
+
+        return (
+            gap_x_summed_pred_adcs, gap_x_summed_target_adcs,
+            gap_z_summed_pred_adcs, gap_z_summed_target_adcs
+        )
+
+def _get_edge_ranges(nums):
+    nums = sorted(set(nums))
+    discontinuities = [[s, e] for s, e in zip(nums, nums[1:]) if s+1 < e]
+    edges = iter(nums[:1] + sum(discontinuities, []) + nums[-1:])
+    return list(zip(edges, edges))
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
