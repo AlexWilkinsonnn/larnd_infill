@@ -115,8 +115,8 @@ def main(args):
     if args.occupancy_metrics or args.summed_adc_metrics:
         purities, completenesses = [], []
 
-        gap_x_summed_pred_adcs, gap_x_summed_target_adcs = [], []
-        gap_z_summed_pred_adcs, gap_z_summed_target_adcs = [], []
+        gap_x_summed_pred_adcs, gap_x_summed_estimate_adcs, gap_x_summed_target_adcs = [], [], []
+        gap_z_summed_pred_adcs, gap_z_summed_estimate_adcs, gap_z_summed_target_adcs = [], [], []
 
         for i_data, data in tqdm(enumerate(dataloader), desc="Val Loop"):
             model.set_input(data)
@@ -136,17 +136,21 @@ def main(args):
                     completenesses.append(completeness)
 
             if args.summed_adc_metrics:
-                gap_x_pred, gap_x_target, gap_z_pred, gap_z_target = get_summed_adc_metrics(
+                gap_x_pred, gap_x_estimate, gap_x_target, gap_z_pred, gap_z_estimate, gap_z_target = get_summed_adc_metrics(
                     vis["s_in"], vis["s_pred"], vis["s_target"],
                     data["mask_x"], data["mask_z"],
                     conf.scalefactors
                 )
                 for val in gap_x_pred:
                     gap_x_summed_pred_adcs.append(val)
+                for val in gap_x_estimate:
+                    gap_x_summed_estimate_adcs.append(val)
                 for val in gap_x_target:
                     gap_x_summed_target_adcs.append(val)
                 for val in gap_z_pred:
                     gap_z_summed_pred_adcs.append(val)
+                for val in gap_z_estimate:
+                    gap_z_summed_estimate_adcs.append(val)
                 for val in gap_z_target:
                     gap_z_summed_target_adcs.append(val)
         
@@ -156,20 +160,26 @@ def main(args):
 
         if args.summed_adc_metrics:
             gap_x_summed_pred_adcs = np.array(gap_x_summed_pred_adcs)
+            gap_x_summed_estimate_adcs = np.array(gap_x_summed_estimate_adcs)
             gap_x_summed_target_adcs = np.array(gap_x_summed_target_adcs)
             gap_z_summed_pred_adcs = np.array(gap_z_summed_pred_adcs)
+            gap_z_summed_estimate_adcs = np.array(gap_z_summed_estimate_adcs)
             gap_z_summed_target_adcs = np.array(gap_z_summed_target_adcs)
 
-            # mask = (gap_x_summed_target_adcs != 0)
-            # print("x:")
-            # print(np.mean((gap_x_summed_pred_adcs[mask] - gap_x_summed_target_adcs[mask]) / gap_x_summed_target_adcs[mask]))
-            # mask = (gap_z_summed_target_adcs != 0)
-            # print("z:")
-            # print(np.mean((gap_z_summed_pred_adcs[mask] - gap_z_summed_target_adcs[mask]) / gap_z_summed_target_adcs[mask]))
+            mask = (gap_x_summed_target_adcs != 0)
+            print("x:")
+            print(np.mean((gap_x_summed_pred_adcs[mask] - gap_x_summed_target_adcs[mask]) / gap_x_summed_target_adcs[mask]))
+            print(np.mean((gap_x_summed_estimate_adcs[mask] - gap_x_summed_target_adcs[mask]) / gap_x_summed_target_adcs[mask]))
+            mask = (gap_z_summed_target_adcs != 0)
+            print("z:")
+            print(np.mean((gap_z_summed_pred_adcs[mask] - gap_z_summed_target_adcs[mask]) / gap_z_summed_target_adcs[mask]))
+            print(np.mean((gap_z_summed_estimate_adcs[mask] - gap_z_summed_target_adcs[mask]) / gap_z_summed_target_adcs[mask]))
 
             np.save("gap_x_summed_pred_adcs.npy", gap_x_summed_pred_adcs)
+            np.save("gap_x_summed_estimate_adcs.npy", gap_x_summed_estimate_adcs)
             np.save("gap_x_summed_target_adcs.npy", gap_x_summed_target_adcs)
             np.save("gap_z_summed_pred_adcs.npy", gap_z_summed_pred_adcs)
+            np.save("gap_z_summed_estimate_adcs.npy", gap_z_summed_estimate_adcs)
             np.save("gap_z_summed_target_adcs.npy", gap_z_summed_target_adcs)
 
 def plot_a_thing(
@@ -436,8 +446,8 @@ def calc_occupancy_metrics(s_in, s_pred, s_target, x_masks, z_masks, scalefactor
     return purities, completenesses
 
 def get_summed_adc_metrics(s_in, s_pred, s_target, x_gaps, z_gaps, scalefactors):
-    gap_x_summed_pred_adcs, gap_x_summed_target_adcs = [], []
-    gap_z_summed_pred_adcs, gap_z_summed_target_adcs = [], []
+    gap_x_summed_pred_adcs, gap_x_summed_estimate_adcs, gap_x_summed_target_adcs = [], [], []
+    gap_z_summed_pred_adcs, gap_z_summed_estimate_adcs, gap_z_summed_target_adcs = [], [], []
 
     s_in_infill_mask = s_in.F[:, -1] == 1
     infill_coords = s_in.C[s_in_infill_mask].type(torch.float)
@@ -445,13 +455,17 @@ def get_summed_adc_metrics(s_in, s_pred, s_target, x_gaps, z_gaps, scalefactors)
     s_pred = ME.SparseTensor(coordinates=s_pred.C, features=s_pred.F * (1 / scalefactors[0]))
     s_target = ME.SparseTensor(coordinates=s_target.C, features=s_target.F * (1 / scalefactors[0]))
 
-    for i_batch, (coords_pred, feats_pred, coords_target, feats_target) in enumerate(
+    for i_batch, (coords_in, feats_in, coords_pred, feats_pred, coords_target, feats_target) in enumerate(
         zip(
+            *s_in.decomposed_coordinates_and_features,
             *s_pred.decomposed_coordinates_and_features,
             *s_target.decomposed_coordinates_and_features
         )
     ):
         batch_infill_coords = infill_coords[infill_coords[:, 0] == i_batch]
+
+        adc_estimate = torch.mean(feats_in[feats_in[:, 0] != 0][:, 0]) * (1 / scalefactors[0])
+        adc_estimate = adc_estimate.item()
 
         for coord_idx in (1, 3): # x and z gaps
             if coord_idx == 1:
@@ -479,23 +493,23 @@ def get_summed_adc_metrics(s_in, s_pred, s_target, x_gaps, z_gaps, scalefactors)
                     gap_x_summed_pred_adcs.append(
                         s_pred.features_at_coordinates(gap_coords).squeeze().sum().item()
                     )
+                    gap_x_summed_estimate_adcs.append(adc_estimate * len(gap_coords))
                     gap_x_summed_target_adcs.append(
                         s_target.features_at_coordinates(gap_coords).squeeze().sum().item()
                     )
-                    # print(f"{gap_x_summed_pred_adcs[-1]} -- {gap_x_summed_target_adcs[-1]}")
                 elif coord_idx == 3:
                     gap_z_summed_pred_adcs.append(
                         s_pred.features_at_coordinates(gap_coords).squeeze().sum().item()
                     )
+                    gap_z_summed_estimate_adcs.append(adc_estimate * len(gap_coords))
                     gap_z_summed_target_adcs.append(
                         s_target.features_at_coordinates(gap_coords).squeeze().sum().item()
                     )
-                    # print(f"{gap_z_summed_pred_adcs[-1]} -- {gap_z_summed_target_adcs[-1]}")
 
-        return (
-            gap_x_summed_pred_adcs, gap_x_summed_target_adcs,
-            gap_z_summed_pred_adcs, gap_z_summed_target_adcs
-        )
+    return (
+        gap_x_summed_pred_adcs, gap_x_summed_estimate_adcs, gap_x_summed_target_adcs,
+        gap_z_summed_pred_adcs, gap_z_summed_estimate_adcs, gap_z_summed_target_adcs
+    )
 
 def _get_edge_ranges(nums):
     nums = sorted(set(nums))
